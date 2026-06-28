@@ -1,0 +1,65 @@
+name: 鏋勫缓 Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 鍏佽鎵嬪姩瑙﹀彂
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 妫€鍑轰唬鐮?      uses: actions/checkout@v4
+    
+    - name: 璁剧疆 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: 瀹夎绯荤粺渚濊禆
+      run: |
+        sudo apt update
+        sudo apt install -y python3-pip python3-dev python3-setuptools python3-venv
+        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config
+        sudo apt install -y zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake
+        sudo apt install -y libffi-dev libssl-dev
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+    
+    - name: 瀹夎 Python 渚濊禆
+      run: |
+        pip install --upgrade pip
+        pip install buildozer python-for-android
+        pip install -r requirements.txt
+    
+    - name: 缂撳瓨 Buildozer 涓嬭浇
+      uses: actions/cache@v4
+      with:
+        path: .buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
+    - name: 鏋勫缓 APK
+      run: |
+        buildozer -v android debug 2>&1 | tee buildozer.log
+      timeout-minutes: 60
+    
+    - name: 涓婁紶 APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: script-generator-apk
+        path: bin/*.apk
+        retention-days: 30
+    
+    - name: 涓婁紶鏋勫缓鏃ュ織
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: buildozer-log
+        path: buildozer.log
+        retention-days: 7
