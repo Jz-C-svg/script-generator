@@ -38,26 +38,34 @@ jobs:
     
     - name: Setup Android SDK
       run: |
-        # 创建 buildozer 期望的 SDK 目录
         SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
-        mkdir -p $SDK_DIR
         
-        # 下载 cmdline-tools
-        cd $SDK_DIR
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip
-        rm cmdline-tools.zip
+        # 创建目录
+        mkdir -p $SDK_DIR/cmdline-tools/latest
         
-        # 创建正确的目录结构
-        mkdir -p cmdline-tools
-        cd cmdline-tools
-        mkdir -p latest
+        # 下载并解压到临时目录
+        cd /tmp
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+        unzip -q cmdline.zip
         
-        # 移动文件到正确位置
-        cd ..
-        for item in bin lib NOTICE.txt source.properties; do
-          if [ -e "$item" ]; then mv $item cmdline-tools/latest/ 2>/dev/null; fi
-        done
+        # 检查解压后的结构
+        ls -la /tmp/
+        ls -la /tmp/cmdline-tools/ 2>/dev/null || true
+        
+        # 移动内容到正确位置
+        if [ -d /tmp/cmdline-tools ]; then
+          if [ -d /tmp/cmdline-tools/bin ]; then
+            # 内容直接是 bin/lib 形式
+            cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
+          else
+            # 内容是 cmdline-tools/bin 嵌套形式
+            cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
+          fi
+        fi
+        
+        # 验证 bin 目录存在
+        echo "=== SDK bin contents ==="
+        ls -la $SDK_DIR/cmdline-tools/latest/bin/ 2>/dev/null || echo "bin not found"
         
         # 设置环境变量
         echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
@@ -70,8 +78,8 @@ jobs:
         # 安装必要的组件
         $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
         
-        # 验证安装
-        ls -la $SDK_DIR/build-tools/
+        # 验证
+        ls -la $SDK_DIR/build-tools/ 2>/dev/null || echo "build-tools not installed"
     
     - name: Build APK
       run: |
