@@ -36,51 +36,49 @@ jobs:
         pip install buildozer
         pip install -r requirements.txt
     
+    - name: Check pre-installed Android SDK
+      run: |
+        echo "=== 检查预装 SDK ==="
+        if [ -d "/usr/local/lib/android/sdk" ]; then
+          echo "找到 GitHub Actions 预装 SDK"
+          ls -la /usr/local/lib/android/sdk/
+          echo ""
+          echo "SDK platforms:"
+          ls -la /usr/local/lib/android/sdk/platforms/ 2>/dev/null || echo "  (无)"
+          echo ""
+          echo "Build tools:"
+          ls -la /usr/local/lib/android/sdk/build-tools/ 2>/dev/null || echo "  (无)"
+          echo ""
+          echo "NDK:"
+          ls -la /usr/local/lib/android/sdk/ndk/ 2>/dev/null || echo "  (无)"
+        fi
+    
     - name: Setup Android SDK
       run: |
-        SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
-        
-        # 创建目录
-        mkdir -p $SDK_DIR/tools/bin
-        mkdir -p $SDK_DIR/cmdline-tools/latest
-        
-        # 下载并解压 cmdline-tools
-        cd /tmp
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
-        unzip -q cmdline.zip
-        
-        # 移动到 cmdline-tools/latest
-        cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
-        
-        # 关键：创建 tools/bin 目录结构（buildozer 期望这个路径）
-        # 将 sdkmanager 复制到 tools/bin
-        if [ -f $SDK_DIR/cmdline-tools/latest/bin/sdkmanager ]; then
-          cp $SDK_DIR/cmdline-tools/latest/bin/sdkmanager $SDK_DIR/tools/bin/
+        # 使用 GitHub Actions 预装的 SDK
+        if [ -d "/usr/local/lib/android/sdk" ]; then
+          SDK_DIR="/usr/local/lib/android/sdk"
+        else
+          SDK_DIR="$HOME/android-sdk"
+          mkdir -p $SDK_DIR
         fi
         
-        # 创建 platforms 和 build-tools 目录（即使为空也没关系，buildozer 会自己安装）
-        mkdir -p $SDK_DIR/platforms
-        mkdir -p $SDK_DIR/build-tools
+        # 创建 buildozer 期望的符号链接
+        mkdir -p $HOME/.buildozer/android/platform
+        ln -sf $SDK_DIR $HOME/.buildozer/android/platform/android-sdk 2>/dev/null || cp -r $SDK_DIR $HOME/.buildozer/android/platform/android-sdk
         
         # 设置环境变量
         echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
-        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/tools/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
+        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$SDK_DIR/build-tools/33.0.0:$PATH" >> $GITHUB_ENV
         
         # 接受许可证
-        yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-        
-        # 预安装 build-tools（避免 buildozer 自己下载时的许可证问题）
-        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
-        
-        # 复制到 tools/bin（再次确保）
         if [ -f $SDK_DIR/cmdline-tools/latest/bin/sdkmanager ]; then
-          cp $SDK_DIR/cmdline-tools/latest/bin/sdkmanager $SDK_DIR/tools/bin/
-          ls -la $SDK_DIR/tools/bin/
+          yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
         fi
         
-        echo "=== SDK Structure ==="
-        find $SDK_DIR -maxdepth 3 -type d | head -20
+        echo "=== SDK 配置完成 ==="
+        echo "ANDROID_HOME=$SDK_DIR"
     
     - name: Build APK
       run: |
