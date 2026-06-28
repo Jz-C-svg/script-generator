@@ -41,45 +41,46 @@ jobs:
         SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
         
         # 创建目录
+        mkdir -p $SDK_DIR/tools/bin
         mkdir -p $SDK_DIR/cmdline-tools/latest
         
-        # 下载并解压到临时目录
+        # 下载并解压 cmdline-tools
         cd /tmp
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
         unzip -q cmdline.zip
         
-        # 检查解压后的结构
-        ls -la /tmp/
-        ls -la /tmp/cmdline-tools/ 2>/dev/null || true
+        # 移动到 cmdline-tools/latest
+        cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
         
-        # 移动内容到正确位置
-        if [ -d /tmp/cmdline-tools ]; then
-          if [ -d /tmp/cmdline-tools/bin ]; then
-            # 内容直接是 bin/lib 形式
-            cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
-          else
-            # 内容是 cmdline-tools/bin 嵌套形式
-            cp -r /tmp/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
-          fi
+        # 关键：创建 tools/bin 目录结构（buildozer 期望这个路径）
+        # 将 sdkmanager 复制到 tools/bin
+        if [ -f $SDK_DIR/cmdline-tools/latest/bin/sdkmanager ]; then
+          cp $SDK_DIR/cmdline-tools/latest/bin/sdkmanager $SDK_DIR/tools/bin/
         fi
         
-        # 验证 bin 目录存在
-        echo "=== SDK bin contents ==="
-        ls -la $SDK_DIR/cmdline-tools/latest/bin/ 2>/dev/null || echo "bin not found"
+        # 创建 platforms 和 build-tools 目录（即使为空也没关系，buildozer 会自己安装）
+        mkdir -p $SDK_DIR/platforms
+        mkdir -p $SDK_DIR/build-tools
         
         # 设置环境变量
         echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
-        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
+        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/tools/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
         
         # 接受许可证
         yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
         
-        # 安装必要的组件
+        # 预安装 build-tools（避免 buildozer 自己下载时的许可证问题）
         $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
         
-        # 验证
-        ls -la $SDK_DIR/build-tools/ 2>/dev/null || echo "build-tools not installed"
+        # 复制到 tools/bin（再次确保）
+        if [ -f $SDK_DIR/cmdline-tools/latest/bin/sdkmanager ]; then
+          cp $SDK_DIR/cmdline-tools/latest/bin/sdkmanager $SDK_DIR/tools/bin/
+          ls -la $SDK_DIR/tools/bin/
+        fi
+        
+        echo "=== SDK Structure ==="
+        find $SDK_DIR -maxdepth 3 -type d | head -20
     
     - name: Build APK
       run: |
