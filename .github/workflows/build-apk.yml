@@ -36,25 +36,35 @@ jobs:
         pip install buildozer
         pip install -r requirements.txt
     
-    - name: Setup Android SDK
+    - name: Download and extract Android SDK cmdline-tools
       run: |
-        SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-        mkdir -p $SDK_ROOT
-        cd $SDK_ROOT
+        mkdir -p $HOME/.android
+        mkdir -p $HOME/.buildozer/android/platform
+        cd $HOME/.buildozer/android/platform
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
         unzip -q cmdline-tools.zip
+        rm cmdline-tools.zip
+        mkdir -p android-sdk
+        cd android-sdk
         mkdir -p cmdline-tools
-        mv cmdline-tools cmdline-tools-temp 2>/dev/null || true
-        mkdir -p cmdline-tools/latest
-        mv cmdline-tools-temp/* cmdline-tools/latest/ 2>/dev/null || mv * cmdline-tools/latest/ 2>/dev/null || true
-        rmdir cmdline-tools-temp 2>/dev/null || true
-        echo "export ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
-        echo "export PATH=$SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
-        yes | $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
-        $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+        cd ..
+        mv cmdline-tools android-sdk/
+        mv android-sdk cmdline-tools/latest
+        ls -la cmdline-tools/latest/bin/
+    
+    - name: Accept Android SDK licenses
+      run: |
+        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+        export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+        yes | sdkmanager --licenses 2>/dev/null || true
+        sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
     
     - name: Build APK
       run: |
+        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+        export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
         buildozer -v android debug 2>&1 | tee buildozer.log
       timeout-minutes: 90
     
