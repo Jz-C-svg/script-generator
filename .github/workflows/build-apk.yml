@@ -30,20 +30,51 @@ jobs:
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
-    
     - name: Install Python packages
       run: |
         pip install --upgrade pip
         pip install buildozer
         pip install -r requirements.txt
     
+    - name: Setup Android SDK
+      run: |
+        # 创建 buildozer 期望的 SDK 目录
+        SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_DIR
+        
+        # 下载 cmdline-tools
+        cd $SDK_DIR
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+        unzip -q cmdline-tools.zip
+        rm cmdline-tools.zip
+        
+        # 创建正确的目录结构
+        mkdir -p cmdline-tools
+        cd cmdline-tools
+        mkdir -p latest
+        
+        # 移动文件到正确位置
+        cd ..
+        for item in bin lib NOTICE.txt source.properties; do
+          if [ -e "$item" ]; then mv $item cmdline-tools/latest/ 2>/dev/null; fi
+        done
+        
+        # 设置环境变量
+        echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
+        
+        # 接受许可证
+        yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+        
+        # 安装必要的组件
+        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+        
+        # 验证安装
+        ls -la $SDK_DIR/build-tools/
+    
     - name: Build APK
       run: |
-        export ANDROID_HOME=$HOME/android-sdk
-        export ANDROID_SDK_ROOT=$HOME/android-sdk
-        export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         buildozer -v android debug 2>&1 | tee buildozer.log
       timeout-minutes: 90
     
