@@ -1,25 +1,26 @@
-name: 鏋勫缓 Android APK
+name: Build Android APK
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # 鍏佽鎵嬪姩瑙﹀彂
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 妫€鍑轰唬鐮?      uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: 璁剧疆 Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
     
-    - name: 瀹夎绯荤粺渚濊禆
+    - name: Install dependencies
       run: |
         sudo apt update
         sudo apt install -y python3-pip python3-dev python3-setuptools python3-venv
@@ -29,13 +30,13 @@ jobs:
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
-    - name: 瀹夎 Python 渚濊禆
+    - name: Install Python packages
       run: |
         pip install --upgrade pip
         pip install buildozer python-for-android
         pip install -r requirements.txt
     
-    - name: 缂撳瓨 Buildozer 涓嬭浇
+    - name: Cache Buildozer
       uses: actions/cache@v4
       with:
         path: .buildozer
@@ -43,12 +44,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
     
-    - name: 鏋勫缓 APK
+    - name: Build APK
       run: |
         buildozer -v android debug 2>&1 | tee buildozer.log
       timeout-minutes: 60
     
-    - name: 涓婁紶 APK
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       if: success()
       with:
@@ -56,7 +57,7 @@ jobs:
         path: bin/*.apk
         retention-days: 30
     
-    - name: 涓婁紶鏋勫缓鏃ュ織
+    - name: Upload log
       uses: actions/upload-artifact@v4
       if: always()
       with:
