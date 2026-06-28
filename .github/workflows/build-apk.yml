@@ -25,7 +25,7 @@ jobs:
         sudo apt update
         sudo apt install -y python3-pip python3-dev python3-setuptools python3-venv
         sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config
-        sudo apt install -y zlib1g-dev libncursesw5-dev cmake
+        sudo apt install -y zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake
         sudo apt install -y libffi-dev libssl-dev
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
@@ -36,75 +36,19 @@ jobs:
         pip install buildozer
         pip install -r requirements.txt
     
-    - name: Debug Android SDK structure
+    - name: Build APK (let buildozer handle SDK)
       run: |
-        echo "=== 检查 /usr/local/lib/android/sdk ==="
-        if [ -d "/usr/local/lib/android/sdk" ]; then
-          echo "SDK 目录存在"
-          echo ""
-          echo "cmdline-tools:"
-          find /usr/local/lib/android/sdk -name "cmdline-tools" -type d | head -5
-          echo ""
-          echo "tools:"
-          ls -la /usr/local/lib/android/sdk/tools/ 2>/dev/null || echo "  tools 不存在"
-          echo ""
-          echo "sdkmanager 位置:"
-          find /usr/local/lib/android/sdk -name "sdkmanager" -type f | head -5
-        else
-          echo "SDK 目录不存在"
-        fi
+        # 设置 buildozer 的环境变量，让它自动处理 SDK
+        export BUILDOZER_WARN_ON_ROOT=1
+        export ACCEPT_EULA=Y
         
-        echo ""
-        echo "=== 检查 ANDROID_HOME 环境变量 ==="
-        echo "ANDROID_HOME=$ANDROID_HOME"
-        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-    
-    - name: Setup Android SDK
-      run: |
-        # 检测预装 SDK
-        PREINSTALLED_SDK=""
-        if [ -d "/usr/local/lib/android/sdk" ]; then
-          PREINSTALLED_SDK="/usr/local/lib/android/sdk"
-        fi
+        # 清除可能存在的 SDK 配置
+        rm -rf ~/.buildozer/android/platform/android-sdk 2>/dev/null || true
+        rm -rf ~/.buildozer/android/platform/android-ndk 2>/dev/null || true
         
-        # 创建 buildozer 期望的目录结构
-        BUILDOZER_SDK=$HOME/.buildozer/android/platform/android-sdk
-        mkdir -p $BUILDOZER_SDK
-        
-        if [ -n "$PREINSTALLED_SDK" ]; then
-          echo "使用预装 SDK: $PREINSTALLED_SDK"
-          
-          # 复制整个 SDK
-          cp -r $PREINSTALLED_SDK/* $BUILDOZER_SDK/ 2>/dev/null || true
-          
-          # 检查是否有 tools/bin/sdkmanager
-          if [ ! -f $BUILDOZER_SDK/tools/bin/sdkmanager ]; then
-            echo "tools/bin/sdkmanager 不存在，创建它..."
-            
-            # 查找 sdkmanager
-            SDKMANAGER=$(find $BUILDOZER_SDK -name "sdkmanager" -type f | head -1)
-            if [ -n "$SDKMANAGER" ]; then
-              echo "找到 sdkmanager: $SDKMANAGER"
-              mkdir -p $BUILDOZER_SDK/tools/bin
-              cp $SDKMANAGER $BUILDOZER_SDK/tools/bin/
-            fi
-          fi
-        fi
-        
-        # 验证
-        echo ""
-        echo "=== SDK 结构验证 ==="
-        ls -la $BUILDOZER_SDK/tools/bin/ 2>/dev/null || echo "tools/bin 不存在"
-        find $BUILDOZER_SDK -name "sdkmanager" -type f | head -3
-        
-        # 设置环境变量
-        echo "ANDROID_HOME=$BUILDOZER_SDK" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$BUILDOZER_SDK" >> $GITHUB_ENV
-    
-    - name: Build APK
-      run: |
+        # 直接运行 buildozer，让它自己下载和配置所有依赖
         buildozer -v android debug 2>&1 | tee buildozer.log
-      timeout-minutes: 90
+      timeout-minutes: 120
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
