@@ -36,15 +36,27 @@ jobs:
         pip install buildozer
         pip install -r requirements.txt
     
-    - name: Build APK
+    - name: Build APK with auto-accept licenses
       run: |
+        # 设置环境变量
         export BUILDOZER_WARN_ON_ROOT=1
         export ACCEPT_EULA=Y
+        export ANDROID_SDK_LICENSES="d56f5187d910ad2b9f6b1af9b9eec6b48ab8c278"
         
-        # 清除旧的 SDK 配置
+        # 预先创建许可证目录并写入许可证
+        mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+        echo -e "\n" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo -e "\n" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+        
+        # 也创建临时目录的许可证
+        mkdir -p /tmp/android-sdk/licenses
+        echo -e "\n" > /tmp/android-sdk/licenses/android-sdk-license
+        
+        # 清除旧配置
         rm -rf ~/.buildozer/android/platform/android-sdk 2>/dev/null || true
         rm -rf ~/.buildozer/android/platform/android-ndk 2>/dev/null || true
         
+        # 运行 buildozer
         buildozer -v android debug 2>&1 | tee buildozer.log
       timeout-minutes: 120
     
