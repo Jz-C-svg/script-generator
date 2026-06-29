@@ -9,40 +9,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
+    container:
+      image: ubuntu:22.04
+      options: --privileged
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+    
+    - name: Install system dependencies (Ubuntu 22.04)
+      run: |
+        apt-get update
+        apt-get install -y \
+          python3-pip python3-dev python3-setuptools python3-venv \
+          git zip unzip openjdk-17-jdk libtool pkg-config \
+          zlib1g-dev libncursesw5-dev cmake \
+          libffi-dev libssl-dev \
+          libtool-bin autoconf automake \
+          gcc g++ make
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip python3-dev python3-setuptools python3-venv \
-          git zip unzip openjdk-17-jdk libtool pkg-config \
-          zlib1g-dev libncursesw5-dev cmake \
-          libffi-dev libssl-dev \
-          libtool-bin autoconf-archive automake
-        
-        # 安装 autoconf 2.69 并替换默认版本
-        sudo apt-get install -y autoconf2.69 || true
-        if [ -f /usr/bin/autoconf2.69 ]; then
-          sudo cp /usr/bin/autoconf2.69 /usr/bin/autoconf
-          sudo cp /usr/bin/autoheader2.69 /usr/bin/autoheader 2>/dev/null || true
-          sudo cp /usr/bin/automake-2.69 /usr/bin/automake 2>/dev/null || true
-          echo "=== autoconf 版本 ==="
-          autoconf --version | head -1
-        else
-          echo "autoconf2.69 not found"
-          ls /usr/bin/autoconf* 2>/dev/null || true
-        fi
-        
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
     - name: Install Python packages
       run: |
@@ -54,19 +45,17 @@ jobs:
       uses: actions/cache@v4
       with:
         path: .buildozer
-        key: ${{ runner.os }}-buildozer-v4-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-docker-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v4-
+          ${{ runner.os }}-buildozer-docker-
     
     - name: Build APK
       run: |
         set -e
         set -o pipefail
         
-        echo "=== 检查 autoconf ==="
-        which autoconf
+        echo "=== autoconf 版本 ==="
         autoconf --version | head -1
-        autoreconf --version | head -1
         
         echo ""
         echo "=== 开始构建 ==="
@@ -78,7 +67,7 @@ jobs:
           exit 1
         fi
         if [ ! -f bin/*.apk ]; then
-          echo "Error: No APK file generated in bin/"
+          echo "Error: No APK file generated"
           ls -la bin/ 2>/dev/null || echo "bin/ does not exist"
           exit 1
         fi
