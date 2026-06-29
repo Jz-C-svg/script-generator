@@ -16,25 +16,10 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk libtool pkg-config
+        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
-        sudo apt-get install -y libffi-dev libssl-dev wget
-    
-    - name: Install autoconf 2.69 (fixes libtool compatibility)
-      run: |
-        cd /tmp
-        wget -q https://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.gz
-        tar xzf autoconf-2.69.tar.gz
-        cd autoconf-2.69
-        ./configure --prefix=/usr/local > /dev/null 2>&1
-        make -j$(nproc) > /dev/null 2>&1
-        sudo make install > /dev/null 2>&1
-        echo "=== autoconf 版本 ==="
-        /usr/local/bin/autoconf --version | head -1
-        echo ""
-        echo "=== 设置为默认 ==="
-        sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/local/bin/autoconf 100
-        sudo update-alternatives --install /usr/bin/autoreconf autoreconf /usr/local/bin/autoreconf 100
+        sudo apt-get install -y libffi-dev libssl-dev libtool autoconf automake
+        sudo apt-get install -y libtool-bin autoconf2.64
     
     - name: Install Python packages
       run: |
@@ -51,6 +36,9 @@ jobs:
         ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
       run: |
         set -e
+        echo "=== libtool 版本 ==="
+        libtool --version || dpkg -s libtool | grep Version
+        echo ""
         echo "=== autoconf 版本 ==="
         autoconf --version | head -1
         echo ""
