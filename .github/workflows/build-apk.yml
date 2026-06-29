@@ -16,9 +16,9 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk autoconf libtool pkg-config
+        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk libtool pkg-config
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
-        sudo apt-get install -y libffi-dev libssl-dev
+        sudo apt-get install -y libffi-dev libssl-dev autoconf2.64
     
     - name: Install Python packages
       run: |
@@ -35,11 +35,21 @@ jobs:
         ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
       run: |
         set -e
+        # 降级 autoconf (Ubuntu 24.04 的 autoconf 2.71 与 libtool 不兼容)
+        sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/bin/autoconf2.64 100 || true
+        sudo update-alternatives --install /usr/bin/autoreconf autoreconf /usr/bin/autoconf2.64 100 || true
+        sudo update-alternatives --set autoconf /usr/bin/autoconf2.64 || true
+        sudo update-alternatives --set autoreconf /usr/bin/autoconf2.64 || true
+        echo "=== autoconf 版本 ==="
+        autoconf --version | head -1
+        echo ""
         echo "=== Python 版本 ==="
         python3 --version
         echo ""
         echo "=== 构建 APK ==="
         yes | buildozer android debug 2>&1 | tee buildozer.log
+        echo "=== 验证 APK ==="
+        ls -la bin/*.apk 2>/dev/null || echo "ERROR: APK not found!" && exit 1
       timeout-minutes: 180
     
     - name: Upload APK
