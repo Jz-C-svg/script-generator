@@ -23,10 +23,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip python3-dev python3-setuptools python3-venv \
-          git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
+          git zip unzip openjdk-17-jdk libtool pkg-config \
           zlib1g-dev libncursesw5-dev cmake \
           libffi-dev libssl-dev \
           libtool-bin autoconf-archive
+        
+        # 降级 autoconf 到 2.69 避免兼容性问题
+        sudo apt-get install -y autoconf2.69 || true
+        sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/bin/autoconf2.69 10 || true
+        
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
@@ -40,17 +45,17 @@ jobs:
       uses: actions/cache@v4
       with:
         path: .buildozer
-        key: ${{ runner.os }}-buildozer-v2-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-v3-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v2-
+          ${{ runner.os }}-buildozer-v3-
     
-    - name: Build APK with proper error handling
+    - name: Build APK
       run: |
         set -e
         set -o pipefail
         yes | buildozer android debug 2>&1 | tee buildozer.log
         BUILD_RESULT=$PIPESTATUS[0]
-        echo "Build exit code: $BUILD_RESULT"
+        echo "=== Build exit code: $BUILD_RESULT ==="
         if [ $BUILD_RESULT -ne 0 ]; then
           echo "Build failed with exit code $BUILD_RESULT"
           exit 1
