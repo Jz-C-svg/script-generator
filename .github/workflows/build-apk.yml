@@ -13,41 +13,51 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Build APK using Docker
+    - name: Install system dependencies
       run: |
-        # 先修复 buildozer 的 root 检查
-        docker run --rm \
-          -v ${{ github.workspace }}:/home/user/script-generator \
-          -w /home/user/script-generator \
-          kivy/buildozer:latest \
-          bash -c '
-            # 禁用 buildozer 的 root 检查
-            sed -i "s/warn_on_root = 1/warn_on_root = 0/" ~/.venv/lib/python*/site-packages/buildozer/__init__.py 2>/dev/null || true
-            # 找到并修复 check_root 函数
-            python3 -c "
-import buildozer
-import os
-# Patch buildozer to skip root check
-bp = buildozer.__file__
-with open(bp, 'r') as f:
-    content = f.read()
-if 'check_root' in content:
-    content = content.replace(
-                'self.check_root()',
-                '# check_root disabled'
-            )
-    with open(bp, 'w') as f:
-        f.write(content)
-    print('Patched buildozer root check')
-else:
-    print('No root check found')
-"
-            echo "=== Python 版本 ==="
-            python3 --version
-            echo ""
-            echo "=== 构建 APK ==="
-            BUILDOZER_ALLOW_ROOT=1 buildozer android debug 2>&1 | tee buildozer.log
-          '
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk libtool pkg-config
+        sudo apt-get install -y zlib1g-dev libncurses-dev cmake
+        sudo apt-get install -y libffi-dev libssl-dev wget
+    
+    - name: Install autoconf 2.69 (fixes libtool compatibility)
+      run: |
+        cd /tmp
+        wget -q https://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.gz
+        tar xzf autoconf-2.69.tar.gz
+        cd autoconf-2.69
+        ./configure --prefix=/usr/local > /dev/null 2>&1
+        make -j$(nproc) > /dev/null 2>&1
+        sudo make install > /dev/null 2>&1
+        echo "=== autoconf 版本 ==="
+        /usr/local/bin/autoconf --version | head -1
+        echo ""
+        echo "=== 设置为默认 ==="
+        sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/local/bin/autoconf 100
+        sudo update-alternatives --install /usr/bin/autoreconf autoreconf /usr/local/bin/autoreconf 100
+    
+    - name: Install Python packages
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install buildozer appdirs colorama jinja2 sh
+    
+    - name: Build APK
+      env:
+        BUILDOZER_ALLOW_ROOT: 1
+        BUILDOZER_WARN_ON_ROOT: 0
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        ANDROID_NDK_HOME: ${{ runner.temp }}/android-ndk
+        ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+      run: |
+        set -e
+        echo "=== autoconf 版本 ==="
+        autoconf --version | head -1
+        echo ""
+        echo "=== 构建 APK ==="
+        yes | buildozer android debug 2>&1 | tee buildozer.log
+        echo "=== 验证 APK ==="
+        ls -la bin/*.apk 2>/dev/null && echo "APK 已生成！" || (echo "ERROR: APK not found!" && exit 1)
       timeout-minutes: 180
     
     - name: Upload APK
