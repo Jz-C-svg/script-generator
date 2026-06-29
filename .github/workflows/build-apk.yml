@@ -18,7 +18,8 @@ jobs:
         docker run --rm \
           -v ${{ github.workspace }}:/home/user/script-generator \
           -w /home/user/script-generator \
-          -i \
+          -e BUILDOZER_ALLOW_ROOT=1 \
+          -e BUILDOZER_WARN_ON_ROOT=0 \
           kivy/buildozer:latest \
           bash -c '
             set -e
@@ -26,7 +27,7 @@ jobs:
             python3 --version
             echo ""
             echo "=== 构建 APK ==="
-            yes | buildozer --allow-root android debug 2>&1 | tee buildozer.log
+            yes | buildozer android debug 2>&1 | tee buildozer.log
           '
       timeout-minutes: 180
     
