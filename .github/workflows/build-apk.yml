@@ -22,36 +22,40 @@ jobs:
         bash -c '
         set -e
         
+        export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          software-properties-common
+        apt-get install -y software-properties-common
         
-        # 安装 Python 3.11 (lxml 需要)
+        # 安装 Python 3.11 (宿主 + 用于下载源码)
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          python3.11 python3.11-dev python3.11-venv python3.11-distutils \
-          git zip unzip openjdk-17-jdk libtool pkg-config \
-          zlib1g-dev libncursesw5-dev cmake \
+        apt-get install -y \
+          python3.11 python3.11-dev python3.11-venv \
+          git zip unzip openjdk-17-jdk \
+          libtool pkg-config zlib1g-dev \
+          libncursesw5-dev cmake \
           libffi-dev libssl-dev \
           libtool-bin autoconf automake \
-          gcc g++ make cython3 \
-          wget curl bash
+          gcc g++ make cython3 wget
         
-        # 创建链接使用 Python 3.11
+        # 软链接
         ln -sf /usr/bin/python3.11 /usr/bin/python3
-        ln -sf /usr/bin/python3.11 /usr/bin/python
         ln -sf /usr/bin/cython3 /usr/bin/cython
-        ln -sf /usr/bin/python3.11-venv /usr/bin/venv 2>/dev/null || true
         
-        # 安装 pip for Python 3.11
+        # 安装 pip
         curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
         
-        echo "=== 环境信息 ==="
+        # 下载 Python 3.11 源码（供 buildozer 使用）
+        cd /tmp
+        wget -q https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tgz
+        tar xzf Python-3.11.0.tgz
+        mkdir -p /opt/python-3.11-android
+        cp -r Python-3.11.0/* /opt/python-3.11-android/
+        rm -rf Python-3.11.0 Python-3.11.0.tgz
+        
+        echo "=== 环境 ==="
         python3 --version
         java -version 2>&1 | head -1
-        autoconf --version | head -1
-        cython --version
         
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         '
@@ -62,29 +66,26 @@ jobs:
         set -e
         python3 -m pip install --upgrade pip
         python3 -m pip install buildozer
-        python3 -m pip install kivymd httpx jinja2 beautifulsoup4
         '
-    
-    - name: Cache Buildozer downloads
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
-        key: ${{ runner.os }}-buildozer-ub22-py311-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-ub22-py311-
     
     - name: Build APK
       run: |
         bash -c '
         set -e
         
-        echo "=== 最终环境 ==="
+        # 告诉 buildozer 使用 Python 3.11 源码
+        export PYTHONPATH=/opt/python-3.11-android
+        export PATH=/opt/python-3.11-android:
+        
+        # 预先下载 Python 3.11 源码供 buildozer 使用
+        cd /
+        wget -q https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tgz -O Python-3.11.0.tgz
+        
+        echo "=== 构建 ==="
         python3 --version
-        which cython
         which buildozer
         
-        echo ""
-        echo "=== 开始构建 ==="
+        # 构建（不带 lxml！）
         yes | buildozer android debug 2>&1 | tee buildozer.log
         '
       timeout-minutes: 180
