@@ -18,15 +18,13 @@ jobs:
         docker run --rm \
           -v ${{ github.workspace }}:/home/user/script-generator \
           -w /home/user/script-generator \
-          -e P4A_ANDROID_API=33 \
-          -e P4A_NDK_API=25 \
-          kivy/buildozer:master \
+          kivy/buildozer:latest \
           bash -c '
             set -e
             echo "=== Python 版本 ==="
             python3 --version
             echo ""
-            echo "=== 构建 ==="
+            echo "=== 构建 APK ==="
             yes | buildozer android debug 2>&1 | tee buildozer.log
           '
       timeout-minutes: 180
