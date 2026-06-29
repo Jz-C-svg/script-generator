@@ -13,22 +13,33 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Build APK using Docker
+    - name: Install system dependencies
       run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/home/user/script-generator \
-          -w /home/user/script-generator \
-          -e BUILDOZER_ALLOW_ROOT=1 \
-          -e BUILDOZER_WARN_ON_ROOT=0 \
-          kivy/buildozer:latest \
-          bash -c '
-            set -e
-            echo "=== Python 版本 ==="
-            python3 --version
-            echo ""
-            echo "=== 构建 APK ==="
-            yes | buildozer android debug 2>&1 | tee buildozer.log
-          '
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk autoconf libtool pkg-config
+        sudo apt-get install -y zlib1g-dev libncurses5-dev libtinfo5 cmake
+        sudo apt-get install -y libffi-dev libssl-dev
+    
+    - name: Install Python packages
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install buildozer appdirs colorama jinja2 sh
+    
+    - name: Build APK
+      env:
+        BUILDOZER_ALLOW_ROOT: 1
+        BUILDOZER_WARN_ON_ROOT: 0
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        ANDROID_NDK_HOME: ${{ runner.temp }}/android-ndk
+        ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+      run: |
+        set -e
+        echo "=== Python 版本 ==="
+        python3 --version
+        echo ""
+        echo "=== 构建 APK ==="
+        yes | buildozer android debug 2>&1 | tee buildozer.log
       timeout-minutes: 180
     
     - name: Upload APK
