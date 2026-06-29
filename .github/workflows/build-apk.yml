@@ -9,78 +9,26 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    container:
-      image: ubuntu:22.04
-      options: --privileged
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Install all dependencies
+    - name: Build APK using Docker
       run: |
-        bash -c '
-        set -e
-        
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y software-properties-common
-        
-        # 安装 Python 3.11
-        add-apt-repository -y ppa:deadsnakes/ppa
-        apt-get update
-        apt-get install -y \
-          python3.11 python3.11-dev python3.11-venv \
-          git zip unzip openjdk-17-jdk \
-          libtool pkg-config zlib1g-dev \
-          libncursesw5-dev cmake \
-          libffi-dev libssl-dev \
-          libtool-bin autoconf automake \
-          gcc g++ make cython3 wget
-        
-        ln -sf /usr/bin/python3.11 /usr/bin/python3
-        ln -sf /usr/bin/cython3 /usr/bin/cython
-        
-        curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
-        
-        echo "=== 环境 ==="
-        python3 --version
-        java -version 2>&1 | head -1
-        
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        '
-    
-    - name: Install Python packages
-      run: |
-        bash -c '
-        set -e
-        python3 -m pip install --upgrade pip
-        python3 -m pip install buildozer
-        '
-    
-    - name: Build APK
-      env:
-        P4A_PYTHON_VERSION: "3.11"
-        P4A_ANDROID_API: "33"
-        P4A_NDK_API: "25"
-      run: |
-        bash -c '
-        set -e
-        
-        echo "=== Python 版本 ==="
-        python3 --version
-        
-        echo ""
-        echo "=== 清理旧缓存 ==="
-        rm -rf .buildozer ~/.buildozer
-        
-        echo ""
-        echo "=== 开始构建 ==="
-        echo "P4A_PYTHON_VERSION="
-        
-        # 构建（不带 lxml！）
-        yes | buildozer android debug 2>&1 | tee buildozer.log
-        '
+        docker run --rm \
+          -v ${{ github.workspace }}:/home/user/script-generator \
+          -w /home/user/script-generator \
+          -e P4A_ANDROID_API=33 \
+          -e P4A_NDK_API=25 \
+          kivy/buildozer:master \
+          bash -c '
+            set -e
+            echo "=== Python 版本 ==="
+            python3 --version
+            echo ""
+            echo "=== 构建 ==="
+            yes | buildozer android debug 2>&1 | tee buildozer.log
+          '
       timeout-minutes: 180
     
     - name: Upload APK
