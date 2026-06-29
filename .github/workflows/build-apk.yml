@@ -23,7 +23,7 @@ jobs:
     - name: Install Python packages
       run: |
         pip install --upgrade pip setuptools wheel
-        # 关键：使用旧版 buildozer（对应旧版 python-for-android，避免 LT_SYS_SYMBOL_USCORE 问题）
+        pip install cython==0.29.36
         pip install buildozer==1.5.0 appdirs colorama jinja2 sh
     
     - name: Build APK
@@ -38,6 +38,9 @@ jobs:
         set -e
         echo "=== buildozer 版本 ==="
         buildozer --version
+        echo ""
+        echo "=== Cython 版本 ==="
+        cython --version
         echo ""
         echo "=== 构建 APK ==="
         yes | buildozer android debug 2>&1 | tee buildozer.log
