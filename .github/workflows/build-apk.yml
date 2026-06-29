@@ -26,11 +26,20 @@ jobs:
           git zip unzip openjdk-17-jdk libtool pkg-config \
           zlib1g-dev libncursesw5-dev cmake \
           libffi-dev libssl-dev \
-          libtool-bin autoconf-archive
+          libtool-bin autoconf-archive automake
         
-        # 降级 autoconf 到 2.69 避免兼容性问题
+        # 安装 autoconf 2.69 并替换默认版本
         sudo apt-get install -y autoconf2.69 || true
-        sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/bin/autoconf2.69 10 || true
+        if [ -f /usr/bin/autoconf2.69 ]; then
+          sudo cp /usr/bin/autoconf2.69 /usr/bin/autoconf
+          sudo cp /usr/bin/autoheader2.69 /usr/bin/autoheader 2>/dev/null || true
+          sudo cp /usr/bin/automake-2.69 /usr/bin/automake 2>/dev/null || true
+          echo "=== autoconf 版本 ==="
+          autoconf --version | head -1
+        else
+          echo "autoconf2.69 not found"
+          ls /usr/bin/autoconf* 2>/dev/null || true
+        fi
         
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
@@ -45,14 +54,22 @@ jobs:
       uses: actions/cache@v4
       with:
         path: .buildozer
-        key: ${{ runner.os }}-buildozer-v3-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-v4-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v3-
+          ${{ runner.os }}-buildozer-v4-
     
     - name: Build APK
       run: |
         set -e
         set -o pipefail
+        
+        echo "=== 检查 autoconf ==="
+        which autoconf
+        autoconf --version | head -1
+        autoreconf --version | head -1
+        
+        echo ""
+        echo "=== 开始构建 ==="
         yes | buildozer android debug 2>&1 | tee buildozer.log
         BUILD_RESULT=$PIPESTATUS[0]
         echo "=== Build exit code: $BUILD_RESULT ==="
@@ -62,7 +79,7 @@ jobs:
         fi
         if [ ! -f bin/*.apk ]; then
           echo "Error: No APK file generated in bin/"
-          ls -la bin/ 2>/dev/null || echo "bin/ directory does not exist"
+          ls -la bin/ 2>/dev/null || echo "bin/ does not exist"
           exit 1
         fi
         echo "APK successfully generated:"
