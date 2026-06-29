@@ -26,7 +26,7 @@ jobs:
         apt-get update
         apt-get install -y software-properties-common
         
-        # 安装 Python 3.11 (宿主 + 用于下载源码)
+        # 安装 Python 3.11
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y \
@@ -38,20 +38,10 @@ jobs:
           libtool-bin autoconf automake \
           gcc g++ make cython3 wget
         
-        # 软链接
         ln -sf /usr/bin/python3.11 /usr/bin/python3
         ln -sf /usr/bin/cython3 /usr/bin/cython
         
-        # 安装 pip
         curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
-        
-        # 下载 Python 3.11 源码（供 buildozer 使用）
-        cd /tmp
-        wget -q https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tgz
-        tar xzf Python-3.11.0.tgz
-        mkdir -p /opt/python-3.11-android
-        cp -r Python-3.11.0/* /opt/python-3.11-android/
-        rm -rf Python-3.11.0 Python-3.11.0.tgz
         
         echo "=== 环境 ==="
         python3 --version
@@ -69,21 +59,24 @@ jobs:
         '
     
     - name: Build APK
+      env:
+        P4A_PYTHON_VERSION: "3.11"
+        P4A_ANDROID_API: "33"
+        P4A_NDK_API: "25"
       run: |
         bash -c '
         set -e
         
-        # 告诉 buildozer 使用 Python 3.11 源码
-        export PYTHONPATH=/opt/python-3.11-android
-        export PATH=/opt/python-3.11-android:
-        
-        # 预先下载 Python 3.11 源码供 buildozer 使用
-        cd /
-        wget -q https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tgz -O Python-3.11.0.tgz
-        
-        echo "=== 构建 ==="
+        echo "=== Python 版本 ==="
         python3 --version
-        which buildozer
+        
+        echo ""
+        echo "=== 清理旧缓存 ==="
+        rm -rf .buildozer ~/.buildozer
+        
+        echo ""
+        echo "=== 开始构建 ==="
+        echo "P4A_PYTHON_VERSION="
         
         # 构建（不带 lxml！）
         yes | buildozer android debug 2>&1 | tee buildozer.log
