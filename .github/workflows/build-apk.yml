@@ -9,55 +9,48 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
+    container:
+      image: kivy/buildozer:latest
+      options: --user root
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Install system dependencies
+    - name: Verify environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-pip python3-venv git openjdk-17-jdk
-        sudo apt-get install -y zlib1g-dev libncurses-dev cmake
-        sudo apt-get install -y libffi-dev libssl-dev libtool autoconf automake
-        # 检查 ltoptions.m4 是否存在
-        find /usr/share/aclocal -name "ltoptions.m4" 2>/dev/null | head -3
-        find /usr/share/aclocal -name "lt~obsolete.m4" 2>/dev/null | head -3
+        echo "=== Python ==="
+        python3 --version
+        echo ""
+        echo "=== Cython ==="
+        cython --version || echo "Cython not found"
+        echo ""
+        echo "=== buildozer ==="
+        buildozer --version || echo "buildozer not found"
+        echo ""
+        echo "=== Java ==="
+        java -version 2>&1 | head -1
+        echo ""
+        echo "=== Android SDK ==="
+        ls -la $ANDROIDSDK/ 2>/dev/null || echo "ANDROIDSDK not set"
     
-    - name: Install Python packages
+    - name: Install Python dependencies
       run: |
-        pip install --upgrade pip setuptools wheel
-        pip install cython==0.29.36
-        pip install buildozer==1.5.0 appdirs colorama jinja2 sh
+        pip3 install --upgrade pip
+        pip3 install kivymd==1.1.1 httpx bs4 jinja2
     
     - name: Build APK
-      env:
-        BUILDOZER_ALLOW_ROOT: 1
-        BUILDOZER_WARN_ON_ROOT: 0
-        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        ANDROID_HOME: ${{ runner.temp }}/android-sdk
-        ANDROID_NDK_HOME: ${{ runner.temp }}/android-ndk
-        ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
-        # 关键修复：让 autoconf 找到 libtool 的 m4 宏
-        ACLOCAL_FLAGS: -I /usr/share/aclocal
+      timeout-minutes: 120
       run: |
         set -e
-        echo "=== buildozer 版本 ==="
-        buildozer --version
-        echo ""
-        echo "=== Cython 版本 ==="
-        cython --version
-        echo ""
-        echo "=== autoconf 版本 ==="
-        autoconf --version | head -1
-        echo ""
-        echo "=== 检查 ltoptions.m4 ==="
-        find /usr/share/aclocal -name "ltoptions.m4" | head -3
-        echo ""
-        echo "=== 构建 APK ==="
-        yes | buildozer android debug 2>&1 | tee buildozer.log
-        echo "=== 验证 APK ==="
-        ls -la bin/*.apk 2>/dev/null && echo "APK 已生成！" || (echo "ERROR: APK not found!" && exit 1)
-      timeout-minutes: 180
+        cd $GITHUB_WORKSPACE
+        echo "=== Starting build ==="
+        yes | buildozer -v android debug 2>&1 | tee buildozer.log
+        echo "=== Verifying APK ==="
+        ls -la bin/*.apk
+      env:
+        ANDROIDAPI: "33"
+        ANDROIDMINAPI: "21"
     
     - name: Upload APK
       if: success()
@@ -68,8 +61,8 @@ jobs:
         retention-days: 30
     
     - name: Upload build log
-      uses: actions/upload-artifact@v4
       if: always()
+      uses: actions/upload-artifact@v4
       with:
         name: buildozer-log
         path: buildozer.log
