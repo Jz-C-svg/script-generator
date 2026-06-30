@@ -7,69 +7,66 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    - name: Set up Python 3.10
+
+    - name: Set up Python 3.9
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
-    
+        python-version: "3.9"
+
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y openjdk-17-jdk
+        sudo apt-get install -y openjdk-11-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
-        sudo apt-get install -y libffi-dev libssl-dev git autoconf libtool pkg-config
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool
+        sudo apt-get install -y pkg-config
+        echo "JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
-    
+
     - name: Install Python packages
       run: |
         python3 --version
-        pip3 install --upgrade pip setuptools wheel
-        pip3 install cython==0.29.36
-        pip3 install buildozer
-        pip3 install kivy==2.1.0 kivymd==1.1.1 httpx beautifulsoup4 jinja2
-        pip3 install --upgrade "pip<24.0"
-        echo "=== VERSIONS ==="
+        pip3 install --upgrade pip==21.3.1 setuptools==59.6.0 wheel==0.37.1
+        pip3 install "cython<3"==0.29.36
+        pip3 install buildozer==1.5.0
+        pip3 install kivy==2.1.0
+        pip3 install kivymd==1.1.1
+        pip3 install httpx==0.24.1 beautifulsoup4==4.11.1 jinja2==3.1.2
+        # Install specific p4a version that works with Python 3.11
+        pip3 install git+https://github.com/kivy/python-for-android.git@2024.04.01
+        echo "=== Versions ==="
         python3 --version
-        pip3 --version
-        cython --version
         buildozer --version
-    
+        kivy --version
+
     - name: Build APK
-      timeout-minutes: 120
+      timeout-minutes: 180
       run: |
         set -e
         cd $GITHUB_WORKSPACE
-        export ANDROIDAPI=33
+        export ANDROIDAPI=27
         export ANDROIDMINAPI=21
-        
-        # 关键修复：在 p4a 的 venv 中也降级 pip
-        export P4A_PIP=pip
-        export P4A_NO_TERMS=1
-        
+        export ANDROIDNDK=25
         yes | buildozer -v android debug 2>&1 | tee buildozer.log
         echo "=== Verify APK ==="
-        ls -la bin/*.apk 2>/dev/null || echo "NO APK FOUND"
+        ls -la bin/*.apk || echo "No APK found"
       env:
         BUILDOZER_ALLOW_ROOT: 1
         BUILDOZER_WARN_ON_ROOT: 0
-    
+
     - name: Upload APK
-      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: scriptgenerator-apk
         path: bin/*.apk
         retention-days: 30
-    
+
     - name: Upload build log
-      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: buildozer-log
