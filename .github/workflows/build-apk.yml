@@ -7,44 +7,48 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Set up Python 3.10
+    - name: Set up Python 3.9
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
+        python-version: "3.9"
     
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y openjdk-17-jdk
+        sudo apt-get install -y openjdk-11-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
         sudo apt-get install -y libffi-dev libssl-dev git autoconf libtool
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        sudo apt-get install -y pkg-config
+        echo "JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
     
     - name: Install Python packages
       run: |
         python3 --version
-        pip3 install --upgrade "pip<24.0" setuptools wheel
-        pip3 install "cython==0.29.36"
-        pip3 install "buildozer==1.5.0"
-        pip3 install kivymd==1.1.1 httpx bs4 jinja2
+        pip3 install --upgrade pip==21.3.1 setuptools wheel
+        pip3 install cython==0.29.24
+        pip3 install buildozer==1.4.0
+        pip3 install kivy==2.1.0
+        pip3 install kivymd==1.1.1
+        pip3 install httpx==0.24.1 beautifulsoup4==4.11.1 jinja2==3.1.2
         echo "=== Versions ==="
         python3 --version
         cython --version
         buildozer --version
+        kivy --version
     
     - name: Build APK
       timeout-minutes: 120
       run: |
         set -e
         cd $GITHUB_WORKSPACE
-        export ANDROIDAPI=33
+        export ANDROIDAPI=27
         export ANDROIDMINAPI=21
         yes | buildozer -v android debug 2>&1 | tee buildozer.log
         echo "=== Verify APK ==="
