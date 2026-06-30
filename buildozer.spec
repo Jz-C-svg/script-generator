@@ -10,8 +10,8 @@ source.include_exts = py,png,jpg,kv,atlas
 version = 1.0.0
 version.code = 1
 
-# 关键修复：Kivy 2.3.0 支持 Python 3.11
-requirements = hostpython3==3.11.0,python3==3.11.0,kivy==2.3.0,kivymd==1.1.1,httpx,bs4,jinja2
+# Kivy 2.2.1 - 稳定的 Python 3.11 兼容版本
+requirements = hostpython3==3.11.0,python3==3.11.0,kivy==2.2.1,kivymd==1.1.1,httpx,bs4,jinja2
 
 orientation = portrait
 
