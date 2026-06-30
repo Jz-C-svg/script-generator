@@ -26,7 +26,7 @@ jobs:
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool
         sudo apt-get install -y pkg-config
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+        echo "PATH=\$JAVA_HOME/bin:\$PATH" >> $GITHUB_ENV
 
     - name: Install Python packages
       run: |
@@ -39,29 +39,40 @@ jobs:
 
     - name: Verify fix script
       run: |
-        ls -la fix_pip_in_venv.py
-        head -5 fix_pip_in_venv.py
+        ls -la fix_pip_final.py
+        head -5 fix_pip_final.py
 
     - name: Build APK with pip fix
       timeout-minutes: 180
       run: |
         set -e
-        cd $GITHUB_WORKSPACE
+        cd "$GITHUB_WORKSPACE"
         
         export ANDROIDAPI=27
         export ANDROIDMINAPI=21
         export ANDROIDNDK=25
         
-        # Start pip fix monitor in background
-        python3 fix_pip_in_venv.py &
+        # Install unbuffered output helper
+        pip3 install --quiet stdlib-list || true
+        
+        # Start pip fix monitor in background - output to log file AND stdout
+        {
+          echo "=== [$(date)] Starting pip fix monitor ==="
+          python3 fix_pip_final.py 2>&1
+          echo "=== [$(date)] pip fix monitor finished ==="
+        } &
         FIX_PID=$!
         echo "Started pip fix monitor (PID: $FIX_PID)"
         
         # Run buildozer
+        echo "=== [$(date)] Starting buildozer ==="
         yes | buildozer -v android debug 2>&1 | tee buildozer.log || true
+        BUILD_EXIT=$?
+        echo "=== [$(date)] buildozer finished (exit: $BUILD_EXIT) ==="
         
         # Stop monitor
         kill $FIX_PID 2>/dev/null || true
+        echo "Monitor killed"
         
         echo "=== Verify APK ==="
         ls -la bin/*.apk 2>/dev/null || echo "No APK found"
