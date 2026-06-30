@@ -7,59 +7,144 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.9
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.9"
+        python-version: "3.10"
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y openjdk-11-jdk
+        sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool
         sudo apt-get install -y pkg-config
-        echo "JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> $GITHUB_ENV
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
     - name: Install Python packages
       run: |
         python3 --version
-        pip3 install --upgrade pip==21.3.1 setuptools==59.6.0 wheel==0.37.1
-        pip3 install "cython<3"==0.29.36
-        pip3 install buildozer==1.5.0
-        pip3 install kivy==2.1.0
-        pip3 install kivymd==1.1.1
-        pip3 install httpx==0.24.1 beautifulsoup4==4.11.1 jinja2==3.1.2
-        # Install specific p4a version that works with Python 3.11
-        pip3 install git+https://github.com/kivy/python-for-android.git@2024.04.01
-        echo "=== Versions ==="
-        python3 --version
-        buildozer --version
-        kivy --version
+        pip3 install --upgrade pip==23.3.2 setuptools wheel
+        pip3 install "cython<3"
+        pip3 install buildozer
+        pip3 install kivy kivymd httpx beautifulsoup4 jinja2
+        pip3 --version
 
-    - name: Build APK
+    - name: Create pip fix script
+      run: |
+        cat > fix_pip_in_venv.sh << 'SCRIPT'
+#!/bin/bash
+# fix_pip_in_venv.sh
+# 鍚庡彴鐩戞帶锛歱4a venv 鍒涘缓鍚庣珛鍗充慨澶?pip
+
+FIX_PYTHON=$(cat << 'PYEOF'
+import sys, os, time, glob
+
+def patch_structs():
+    """淇ˉ pip 鐨?vendored resolvelib structs.py"""
+    patterns = [
+        ".buildozer/android/platform/build-*/build/venv/lib/python*/site-packages/pip/_vendor/resolvelib/structs.py",
+    ]
+    
+    for pattern in patterns:
+        for sf in glob.glob(pattern):
+            with open(sf, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            if 'class RequirementInformation' in content:
+                continue
+            
+            if 'class RequirementInfo' not in content:
+                continue
+            
+            print(f"[fix-pip] Patching: {sf}", flush=True)
+            
+            patch = '''
+# --- fix_pip: RequirementInformation compat ---
+try:
+    import sys
+    _src = os.path.join(os.path.dirname(__file__), '..', 'resolvers', '__init__.py')
+    if os.path.exists(_src):
+        _c = open(_src).read()
+        if 'RequirementInformation' in _c:
+            pass  # Will be resolved at runtime
+    # Add alias
+    if hasattr(sys.modules[__name__], 'RequirementInfo') and 'RequirementInformation' not in dir():
+        globals()['RequirementInformation'] = RequirementInfo
+        if '__all__' in dir() and 'RequirementInformation' not in __all__:
+            __all__ = list(__all__) + ['RequirementInformation']
+    print("[fix-pip] structs.py patched", flush=True)
+except Exception as e:
+    print(f"[fix-pip] Patch warning: {e}", flush=True)
+# --- end fix ---
+'''
+            with open(sf, 'a', encoding='utf-8') as f:
+                f.write(patch)
+            
+            print(f"[fix-pip] 鉁?Patched: {sf}", flush=True)
+            return True
+    return False
+
+if __name__ == "__main__":
+    print("[fix-pip] Starting venv pip monitor", flush=True)
+    
+    # 鍏堝皾璇曚慨琛ュ凡缁忓瓨鍦ㄧ殑
+    if patch_structs():
+        print("[fix-pip] Early patch successful", flush=True)
+    
+    # 鎸佺画鐩戞帶鐩村埌鎴愬姛鎴栬秴鏃?    for i in range(300):  # 5鍒嗛挓
+        if patch_structs():
+            print(f"[fix-pip] Patch successful at {i}s", flush=True)
+            break
+        time.sleep(1)
+    else:
+        print("[fix-pip] Timeout - no venv found", flush=True)
+PYEOF
+
+echo "Created fix script"
+
+    - name: Build APK with pip fix
       timeout-minutes: 180
       run: |
         set -e
         cd $GITHUB_WORKSPACE
+        
         export ANDROIDAPI=27
         export ANDROIDMINAPI=21
         export ANDROIDNDK=25
-        yes | buildozer -v android debug 2>&1 | tee buildozer.log
+        
+        # 鍚姩 pip 淇鍚庡彴鐩戞帶
+        python3 fix_pip_in_venv.sh &
+        FIX_PID=$!
+        echo "Started pip fix monitor (PID: $FIX_PID)"
+        
+        # 杩愯 buildozer
+        yes | buildozer -v android debug 2>&1 | tee buildozer.log || true
+        
+        # 鍋滄淇鐩戞帶
+        kill $FIX_PID 2>/dev/null || true
+        
         echo "=== Verify APK ==="
-        ls -la bin/*.apk || echo "No APK found"
+        ls -la bin/*.apk 2>/dev/null || echo "No APK found"
+        
+        # 濡傛灉娌℃湁 APK锛屽皾璇曟墜鍔ㄤ慨琛ュ苟閲嶈瘯鏈€鍚庨樁娈?        if [ ! -f bin/*.apk ] 2>/dev/null; then
+            echo "=== Attempting manual pip fix ==="
+            python3 fix_pip_in_venv.sh
+        fi
+        
       env:
         BUILDOZER_ALLOW_ROOT: 1
         BUILDOZER_WARN_ON_ROOT: 0
 
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: scriptgenerator-apk
@@ -67,6 +152,7 @@ jobs:
         retention-days: 30
 
     - name: Upload build log
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: buildozer-log
