@@ -17,27 +17,24 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Verify environment
+    - name: Show environment
       run: |
         echo "=== Python ==="
-        python3 --version
+        python3 --version || python --version
         echo ""
-        echo "=== Cython ==="
-        cython --version || echo "Cython not found"
+        echo "=== pip ==="
+        pip3 --version || pip --version
         echo ""
         echo "=== buildozer ==="
-        buildozer --version || echo "buildozer not found"
+        buildozer --version
         echo ""
         echo "=== Java ==="
         java -version 2>&1 | head -1
         echo ""
-        echo "=== Android SDK ==="
-        ls -la $ANDROIDSDK/ 2>/dev/null || echo "ANDROIDSDK not set"
-    
-    - name: Install Python dependencies
-      run: |
-        pip3 install --upgrade pip
-        pip3 install kivymd==1.1.1 httpx bs4 jinja2
+        echo "=== Environment ==="
+        echo "HOME: $HOME"
+        echo "ANDROIDSDK: $ANDROIDSDK"
+        echo "ANDROIDNDK: $ANDROIDNDK"
     
     - name: Build APK
       timeout-minutes: 120
@@ -46,7 +43,7 @@ jobs:
         cd $GITHUB_WORKSPACE
         echo "=== Starting build ==="
         yes | buildozer -v android debug 2>&1 | tee buildozer.log
-        echo "=== Verifying APK ==="
+        echo "=== Verify APK ==="
         ls -la bin/*.apk
       env:
         ANDROIDAPI: "33"
