@@ -23,10 +23,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
-        sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool
-        sudo apt-get install -y pkg-config
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        echo "PATH=\$JAVA_HOME/bin:\$PATH" >> $GITHUB_ENV
+        sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool pkg-config
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     - name: Install Python packages
       run: |
@@ -36,33 +35,40 @@ jobs:
         pip3 install buildozer
         pip3 install kivy kivymd httpx beautifulsoup4 jinja2
         pip3 --version
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     - name: Verify fix script
       run: |
-        ls -la fix_pip_final.py
-        head -5 fix_pip_final.py
+        set -x
+        echo "PWD=$(pwd)"
+        /bin/ls -la fix_pip_final.py || ls -la fix_pip_final.py || echo "file check failed"
+        /usr/bin/head -n 5 fix_pip_final.py || head -n 5 fix_pip_final.py || echo "head failed"
+        echo "PATH=$PATH"
 
     - name: Build APK with pip fix
       timeout-minutes: 180
       run: |
-        set -e
-        cd "$GITHUB_WORKSPACE"
-        
         export ANDROIDAPI=27
         export ANDROIDMINAPI=21
         export ANDROIDNDK=25
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$PATH
+        export BUILDOZER_ALLOW_ROOT=1
+        export BUILDOZER_WARN_ON_ROOT=0
         
-        # Install unbuffered output helper
-        pip3 install --quiet stdlib-list || true
+        cd "$GITHUB_WORKSPACE"
         
-        # Start pip fix monitor in background - output to log file AND stdout
+        # Start pip fix monitor in background
         {
           echo "=== [$(date)] Starting pip fix monitor ==="
           python3 fix_pip_final.py 2>&1
           echo "=== [$(date)] pip fix monitor finished ==="
-        } &
+        } > /tmp/pip_fix_output.log 2>&1 &
         FIX_PID=$!
         echo "Started pip fix monitor (PID: $FIX_PID)"
+        echo "Fix output will be in /tmp/pip_fix_output.log"
         
         # Run buildozer
         echo "=== [$(date)] Starting buildozer ==="
@@ -70,16 +76,16 @@ jobs:
         BUILD_EXIT=$?
         echo "=== [$(date)] buildozer finished (exit: $BUILD_EXIT) ==="
         
+        # Show fix output
+        echo "=== Fix monitor output ==="
+        cat /tmp/pip_fix_output.log || echo "No fix output"
+        
         # Stop monitor
         kill $FIX_PID 2>/dev/null || true
         echo "Monitor killed"
         
         echo "=== Verify APK ==="
         ls -la bin/*.apk 2>/dev/null || echo "No APK found"
-        
-      env:
-        BUILDOZER_ALLOW_ROOT: 1
-        BUILDOZER_WARN_ON_ROOT: 0
 
     - name: Upload APK
       if: success()
