@@ -7,38 +7,51 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
-    container:
-      image: kivy/buildozer:latest
-      options: --user root
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Fix pip compatibility
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+    
+    - name: Install system dependencies
       run: |
-        echo "=== Fix pip < 24.0 (resolvelib compatibility) ==="
+        sudo apt-get update
+        sudo apt-get install -y openjdk-17-jdk
+        sudo apt-get install -y zlib1g-dev libncurses-dev cmake
+        sudo apt-get install -y libffi-dev libssl-dev git autoconf libtool
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+    
+    - name: Install Python packages
+      run: |
+        python3 --version
         pip3 install --upgrade "pip<24.0" setuptools wheel
-        pip3 --version
-        echo ""
-        echo "=== Install Cython 0.29.36 ==="
         pip3 install "cython==0.29.36"
+        pip3 install "buildozer==1.5.0"
+        pip3 install kivymd==1.1.1 httpx bs4 jinja2
+        echo "=== Versions ==="
+        python3 --version
         cython --version
+        buildozer --version
     
     - name: Build APK
       timeout-minutes: 120
       run: |
         set -e
         cd $GITHUB_WORKSPACE
-        echo "=== Starting build (pip fixed) ==="
+        export ANDROIDAPI=33
+        export ANDROIDMINAPI=21
         yes | buildozer -v android debug 2>&1 | tee buildozer.log
         echo "=== Verify APK ==="
         ls -la bin/*.apk
       env:
-        ANDROIDAPI: "33"
-        ANDROIDMINAPI: "21"
+        BUILDOZER_ALLOW_ROOT: 1
+        BUILDOZER_WARN_ON_ROOT: 0
     
     - name: Upload APK
       if: success()
