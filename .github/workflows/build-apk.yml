@@ -46,15 +46,31 @@ jobs:
           echo "SDK tools installed at $BUILDOZER_SDK"
           ls -la $BUILDOZER_SDK/cmdlinetools/latest/bin/
         fi
+        # Create compatibility symlinks: p4a looks for sdkmanager at tools/bin/sdkmanager
+        # but cmdlinetools-v3 has it at cmdlinetools/latest/bin/sdkmanager
+        if [ -d $BUILDOZER_SDK/cmdlinetools/latest/bin ] && [ ! -d $BUILDOZER_SDK/tools ]; then
+          mkdir -p $BUILDOZER_SDK/tools/bin
+          ln -s $BUILDOZER_SDK/cmdlinetools/latest/bin/* $BUILDOZER_SDK/tools/bin/
+          echo "Symlinks created: tools/bin/ -> cmdlinetools/latest/bin/"
+          ls -la $BUILDOZER_SDK/tools/bin/
+        fi
         # Accept all SDK licenses by writing license files directly to buildozer's SDK path
         mkdir -p $BUILDOZER_SDK/licenses
         printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb52fb78af6dfcb131a6481e\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232\n" > $BUILDOZER_SDK/licenses/android-sdk-license
         printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $BUILDOZER_SDK/licenses/android-sdk-preview-license
         echo "License files written to $BUILDOZER_SDK/licenses/"
         ls -la $BUILDOZER_SDK/licenses/
+        # Pre-install required SDK components using sdkmanager so buildozer/p4a
+        # doesn't need to install them itself (which is slow and may timeout)
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$BUILDOZER_SDK/cmdlinetools/latest/bin:$PATH
+        echo "Pre-installing SDK components with sdkmanager..."
+        yes | sdkmanager --sdk_root=$BUILDOZER_SDK "platforms;android-33" "build-tools;33.0.2" "platform-tools" 2>&1 | tail -5 || true
+        echo "SDK components pre-installed"
+        ls -la $BUILDOZER_SDK/platforms/ 2>/dev/null || echo "No platforms installed yet"
+        ls -la $BUILDOZER_SDK/build-tools/ 2>/dev/null || echo "No build-tools installed yet"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        ANDROID_HOME: /home/runner/android-sdk
 
     - name: Install Python packages
       run: |
@@ -70,7 +86,7 @@ jobs:
         PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     - name: Build APK
-      timeout-minutes: 180
+      timeout-minutes: 120
       run: |
         export ANDROIDAPI=33
         export ANDROIDMINAPI=21
@@ -81,14 +97,20 @@ jobs:
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
         cd "$GITHUB_WORKSPACE"
+        echo "=== Pre-installed SDK contents ==="
+        ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
+        ls -la $ANDROID_HOME/build-tools/ 2>/dev/null || echo "No build-tools"
+        echo "=== Starting buildozer ==="
         buildozer android debug 2>&1 | tee buildozer.log
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo "=== Build exit code: $EXIT_CODE ==="
+        tail -n 30 buildozer.log
         echo "=== Checking for APK ==="
         ls -la bin/ 2>/dev/null || echo "bin dir not found"
         if ls bin/*.apk 2>/dev/null; then
           echo "APK found!"
         else
-          echo "APK NOT found - build may have failed"
-          tail -n 20 buildozer.log
+          echo "APK NOT found - build failed"
           exit 1
         fi
 
