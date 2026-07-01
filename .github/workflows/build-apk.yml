@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -30,24 +30,16 @@ jobs:
     - name: Install Python packages
       run: |
         python3 --version
-        pip3 install --upgrade pip==23.3.2 setuptools wheel
+        pip3 install --upgrade pip==21.3.1 setuptools==65.5.0 wheel
         pip3 install "cython<3"
-        pip3 install buildozer
-        pip3 install kivy kivymd httpx beautifulsoup4 jinja2
+        pip3 install buildozer==1.5.0
+        pip3 install kivy==2.1.0 kivymd==1.1.1 httpx beautifulsoup4
         pip3 --version
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-    - name: Verify fix script
-      run: |
-        set -x
-        echo "PWD=$(pwd)"
-        /bin/ls -la fix_pip_final.py || ls -la fix_pip_final.py || echo "file check failed"
-        /usr/bin/head -n 5 fix_pip_final.py || head -n 5 fix_pip_final.py || echo "head failed"
-        echo "PATH=$PATH"
-
-    - name: Build APK with pip fix
+    - name: Build APK
       timeout-minutes: 180
       run: |
         export ANDROIDAPI=27
@@ -57,35 +49,91 @@ jobs:
         export PATH=$JAVA_HOME/bin:$PATH
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
-        
+
         cd "$GITHUB_WORKSPACE"
-        
-        # Start pip fix monitor in background
+
+        # Fix pip in buildozer venv before build starts
+        # Background monitor to catch venv creation and downgrade pip
         {
-          echo "=== [$(date)] Starting pip fix monitor ==="
-          python3 fix_pip_final.py 2>&1
-          echo "=== [$(date)] pip fix monitor finished ==="
-        } > /tmp/pip_fix_output.log 2>&1 &
+          echo "=== [$(date)] Starting pip downgrade monitor ==="
+          python3 << 'MONITOR'
+import sys, os, time, glob, subprocess, shutil
+
+def log(msg):
+    print(msg, flush=True)
+
+log(f"Python: {sys.version}")
+workspace = os.environ.get("GITHUB_WORKSPACE", "/home/runner/work/script-generator/script-generator")
+
+# Monitor for up to 20 minutes for venv creation
+for attempt in range(1200):
+    time.sleep(1)
+
+    # Find venv pip
+    venv_pip = None
+    patterns = [
+        os.path.join(workspace, ".buildozer", "android", "platform", "build-*",
+                     "build", "venv", "bin", "pip3"),
+        os.path.join(workspace, ".buildozer", "android", "platform", "build-*",
+                     "build", "venv", "bin", "pip"),
+    ]
+    for p in patterns:
+        for m in glob.glob(p):
+            venv_pip = m
+            break
+        if venv_pip:
+            break
+
+    if venv_pip:
+        log(f"Found venv pip: {venv_pip}")
+        # Check current version
+        result = subprocess.run([venv_pip, "--version"], capture_output=True, text=True)
+        log(f"Current pip version: {result.stdout.strip()}")
+        if "21.3" not in result.stdout:
+            log("Downgrading pip to 21.3.1...")
+            r = subprocess.run([venv_pip, "install", "pip==21.3.1", "-q"], capture_output=True, text=True)
+            if r.returncode == 0:
+                log("pip downgrade OK")
+            else:
+                log(f"pip downgrade failed: {r.stderr}")
+        else:
+            log("pip already 21.3.1, OK")
+        return
+
+    if attempt % 60 == 0 and attempt > 0:
+        log(f"  Still monitoring... t={attempt}s")
+
+log("Timeout - venv not found")
+MONITOR
+          echo "=== [$(date)] pip downgrade monitor finished ==="
+        } > /tmp/pip_fix.log 2>&1 &
         FIX_PID=$!
-        echo "Started pip fix monitor (PID: $FIX_PID)"
-        echo "Fix output will be in /tmp/pip_fix_output.log"
-        
-        # Run buildozer
+
+        echo "Started pip downgrade monitor (PID: $FIX_PID)"
+
+        # Run buildozer (NO || true — let real failures propagate)
         echo "=== [$(date)] Starting buildozer ==="
-        yes | buildozer -v android debug 2>&1 | tee buildozer.log || true
-        BUILD_EXIT=$?
+        buildozer -v android debug 2>&1 | tee buildozer.log
+        BUILD_EXIT=${PIPESTATUS[0]}
         echo "=== [$(date)] buildozer finished (exit: $BUILD_EXIT) ==="
-        
+
         # Show fix output
-        echo "=== Fix monitor output ==="
-        cat /tmp/pip_fix_output.log || echo "No fix output"
-        
-        # Stop monitor
+        echo "=== pip downgrade output ==="
+        cat /tmp/pip_fix.log || echo "No fix output"
+
+        # Kill monitor if still running
         kill $FIX_PID 2>/dev/null || true
-        echo "Monitor killed"
-        
-        echo "=== Verify APK ==="
-        ls -la bin/*.apk 2>/dev/null || echo "No APK found"
+
+        # Check for APK
+        if ls bin/*.apk 2>/dev/null; then
+          echo "=== APK found! ==="
+          ls -lh bin/*.apk
+        else
+          echo "=== NO APK found! ==="
+          echo "Last 50 lines of build log:"
+          tail -n 50 buildozer.log
+          exit 1
+        fi
 
     - name: Upload APK
       if: success()
