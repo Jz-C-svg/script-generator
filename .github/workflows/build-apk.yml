@@ -24,19 +24,25 @@ jobs:
         sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake wget unzip
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool pkg-config
-        # Download Android SDK commandlinetools (buildozer will reuse this)
+        # Download Android SDK commandlinetools (newer version with correct cmdline-tools structure)
         SDK_DIR=$HOME/android-sdk
         mkdir -p $SDK_DIR/cmdlinetools
         if [ ! -f $SDK_DIR/cmdlinetools/latest/bin/sdkmanager ]; then
           echo "Downloading Android SDK commandlinetools..."
           cd $SDK_DIR/cmdlinetools
-          curl -L -o cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-6514223_latest.zip
+          curl -L -o cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           echo "Downloaded, size: $(wc -c < cmdline.zip) bytes"
           unzip -q cmdline.zip
-          ls -la
-          mv cmdline-tools latest
-          rm cmdline.zip
+          # New cmdlinetools zip creates cmdline-tools/ directory
+          if [ -d cmdline-tools ]; then
+            mv cmdline-tools latest
+          elif [ -d tools ]; then
+            # Old zip creates tools/ directory; rename to latest for consistency
+            mv tools latest
+          fi
+          rm -f cmdline.zip
           echo "SDK tools installed at $SDK_DIR"
+          ls -la $SDK_DIR/cmdlinetools/latest/bin/
         fi
         # Accept all SDK licenses (required for build-tools, platforms, etc.)
         yes | $SDK_DIR/cmdlinetools/latest/bin/sdkmanager --sdk_root=$SDK_DIR --licenses || true
