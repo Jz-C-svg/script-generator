@@ -24,38 +24,34 @@ jobs:
         sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake wget unzip
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool pkg-config
-        # Download Android SDK commandlinetools (newer version with correct cmdline-tools structure)
-        SDK_DIR=$HOME/android-sdk
-        mkdir -p $SDK_DIR/cmdlinetools
-        if [ ! -f $SDK_DIR/cmdlinetools/latest/bin/sdkmanager ]; then
-          echo "Downloading Android SDK commandlinetools..."
-          cd $SDK_DIR/cmdlinetools
+        # IMPORTANT: android.sdk config token is deprecated and ignored in buildozer.
+        # Buildozer always uses ~/.buildozer/android/platform/android-sdk/ for its SDK.
+        # We must download cmdlinetools to THIS path, not anywhere else.
+        BUILDOZER_SDK=$HOME/.buildozer/android/platform/android-sdk
+        mkdir -p $BUILDOZER_SDK/cmdlinetools
+        if [ ! -f $BUILDOZER_SDK/cmdlinetools/latest/bin/sdkmanager ]; then
+          echo "Downloading Android SDK commandlinetools to buildozer SDK path..."
+          cd $BUILDOZER_SDK/cmdlinetools
           curl -L -o cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           echo "Downloaded, size: $(wc -c < cmdline.zip) bytes"
           unzip -q cmdline.zip
-          # New cmdlinetools zip creates cmdline-tools/ directory
+          # New cmdlinetools zip creates cmdline-tools/ directory at the root
           if [ -d cmdline-tools ]; then
             mv cmdline-tools latest
           elif [ -d tools ]; then
-            # Old zip creates tools/ directory; rename to latest for consistency
+            # Old zip creates tools/ directory
             mv tools latest
           fi
           rm -f cmdline.zip
-          echo "SDK tools installed at $SDK_DIR"
-          ls -la $SDK_DIR/cmdlinetools/latest/bin/
+          echo "SDK tools installed at $BUILDOZER_SDK"
+          ls -la $BUILDOZER_SDK/cmdlinetools/latest/bin/
         fi
-        # Accept all SDK licenses (required for build-tools, platforms, etc.)
-        # Write license files directly to BOTH possible SDK locations:
-        # 1. $SDK_DIR (where we download the SDK)
-        # 2. ~/.buildozer/android/platform/android-sdk/ (where buildozer actually uses it)
-        mkdir -p $SDK_DIR/licenses ~/.buildozer/android/platform/android-sdk/licenses
-        printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb52fb78af6dfcb131a6481e\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232\n" > $SDK_DIR/licenses/android-sdk-license
-        cp $SDK_DIR/licenses/android-sdk-license ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
-        cp $SDK_DIR/licenses/android-sdk-preview-license ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        echo "License files written to both SDK locations"
-        ls -la $SDK_DIR/licenses/
-        ls -la ~/.buildozer/android/platform/android-sdk/licenses/
+        # Accept all SDK licenses by writing license files directly to buildozer's SDK path
+        mkdir -p $BUILDOZER_SDK/licenses
+        printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb52fb78af6dfcb131a6481e\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232\n" > $BUILDOZER_SDK/licenses/android-sdk-license
+        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $BUILDOZER_SDK/licenses/android-sdk-preview-license
+        echo "License files written to $BUILDOZER_SDK/licenses/"
+        ls -la $BUILDOZER_SDK/licenses/
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/android-sdk
@@ -76,10 +72,10 @@ jobs:
     - name: Build APK
       timeout-minutes: 180
       run: |
-        export ANDROIDAPI=27
+        export ANDROIDAPI=33
         export ANDROIDMINAPI=21
-        export ANDROIDNDK=25
-        export ANDROID_HOME=$HOME/android-sdk
+        export ANDROIDNDK=28c
+        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
