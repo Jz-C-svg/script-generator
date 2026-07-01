@@ -91,39 +91,33 @@ jobs:
         HOSTPY3=$P4A_DIR/pythonforandroid/recipes/hostpython3/__init__.py
         # Verify the recipe exists and show ensurepip context
         grep -n 'ensurepip\|fix_pip_shebangs' $HOSTPY3
-        # Create a temp patch file (avoids YAML quote escaping issues)
-        tee /tmp/pip_patch.py <<'PATCHEOF'
-# Upgrade pip to 24.0: fixes ImportError with newer resolvelib
-        shprint(
-            sh.Command(self.python_exe),
-            "-m", "pip", "install", "--upgrade", "pip==24.0",
-            _env={"HOME": "/tmp", "PATH": self.local_bin},
-        )
-PATCHEOF
-        echo "---Creating sed script---"
-        # Use Python to do the patch (cleaner than complex sed)
-        python3 - - "$HOSTPY3" <<'PYEOF'
-import sys
-hostpy3 = sys.argv[1]
-patch_text = open('/tmp/pip_patch.py').read()
-with open(hostpy3) as f:
-    lines = f.readlines()
-if any('pip==24.0' in l for l in lines):
-    print("pip==24.0 already present")
-else:
-        for i, line in enumerate(lines):
-            if 'self.fix_pip_shebangs()' in line:
-                # Insert patch after this line (at index i+1)
-                lines.insert(i+1, patch_text + '\n')
-                break
-        else:
-            print("ERROR: fix_pip_shebangs() not found")
-            sys.exit(1)
-        with open(hostpy3, 'w') as f:
-            f.writelines(lines)
-        print("pip upgrade injected OK")
-PYEOF
-        $HOSTPY3
+        # Write pip patch text to file using printf (avoids heredoc YAML issues)
+        printf '%s\n' \
+            "# Upgrade pip to 24.0" \
+            "        shprint(" \
+            "            sh.Command(self.python_exe)," \
+            "            '-m', 'pip', 'install', '--upgrade', 'pip==24.0'," \
+            "            _env={'HOME': '/tmp', 'PATH': self.local_bin}," \
+            "        )" > /tmp/pip_patch.py
+        # Write Python patcher to file using printf
+        printf '%s\n' \
+            "import sys" \
+            "hostpy3 = sys.argv[1]" \
+            "patch_text = open('/tmp/pip_patch.py').read()" \
+            "lines = open(hostpy3).readlines()" \
+            "if any('pip==24.0' in l for l in lines):" \
+            "    print('pip==24.0 already present')" \
+            "else:" \
+            "    for i, line in enumerate(lines):" \
+            "        if 'self.fix_pip_shebangs()' in line:" \
+            "            lines.insert(i+1, patch_text)" \
+            "            break" \
+            "    else:" \
+            "        print('ERROR: fix_pip_shebangs not found')" \
+            "        sys.exit(1)" \
+            "    open(hostpy3, 'w').writelines(lines)" \
+            "    print('pip upgrade injected OK')" > /tmp/patch_hostpy3.py
+        python3 /tmp/patch_hostpy3.py "$HOSTPY3"
         echo "---Verifying patch---"
         grep -n 'pip==24.0' $HOSTPY3 && echo "PATCH OK" || echo "PATCH FAILED"
         echo "P4A patch complete"
