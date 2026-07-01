@@ -45,8 +45,19 @@ jobs:
           ls -la $SDK_DIR/cmdlinetools/latest/bin/
         fi
         # Accept all SDK licenses (required for build-tools, platforms, etc.)
-        yes | $SDK_DIR/cmdlinetools/latest/bin/sdkmanager --sdk_root=$SDK_DIR --licenses || true
+        # Try multiple times since the sdkmanager license prompt is interactive
+        for i in 1 2 3 4 5; do
+          echo "Accepting licenses (attempt $i)..."
+          yes 2>/dev/null | $SDK_DIR/cmdlinetools/latest/bin/sdkmanager --sdk_root=$SDK_DIR --licenses && break
+          sleep 2
+        done
         echo "SDK licenses accepted"
+        # Also create license files directly as backup
+        mkdir -p $SDK_DIR/licenses
+        printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
+        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" >> $SDK_DIR/licenses/android-sdk-license
+        printf "\nd56f5187479451eabf01fb78af6dfcb131a6481e\n" >> $SDK_DIR/licenses/android-sdk-license
+        printf "\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232\n" >> $SDK_DIR/licenses/android-sdk-license
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/android-sdk
