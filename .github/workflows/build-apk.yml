@@ -30,8 +30,10 @@ jobs:
         if [ ! -f $SDK_DIR/cmdlinetools/latest/bin/sdkmanager ]; then
           echo "Downloading Android SDK commandlinetools..."
           cd $SDK_DIR/cmdlinetools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-6514223_latest.zip -O cmdline.zip
+          curl -L -o cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-6514223_latest.zip
+          echo "Downloaded, size: $(wc -c < cmdline.zip) bytes"
           unzip -q cmdline.zip
+          ls -la
           mv cmdline-tools latest
           rm cmdline.zip
           echo "SDK tools installed at $SDK_DIR"
