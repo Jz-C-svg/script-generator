@@ -49,89 +49,15 @@ jobs:
         export PATH=$JAVA_HOME/bin:$PATH
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
-
         cd "$GITHUB_WORKSPACE"
-
-        # Fix pip in buildozer venv before build starts
-        # Background monitor to catch venv creation and downgrade pip
-        {
-          echo "=== [$(date)] Starting pip downgrade monitor ==="
-          python3 << 'MONITOR'
-import sys, os, time, glob, subprocess, shutil
-
-def log(msg):
-    print(msg, flush=True)
-
-log(f"Python: {sys.version}")
-workspace = os.environ.get("GITHUB_WORKSPACE", "/home/runner/work/script-generator/script-generator")
-
-# Monitor for up to 20 minutes for venv creation
-for attempt in range(1200):
-    time.sleep(1)
-
-    # Find venv pip
-    venv_pip = None
-    patterns = [
-        os.path.join(workspace, ".buildozer", "android", "platform", "build-*",
-                     "build", "venv", "bin", "pip3"),
-        os.path.join(workspace, ".buildozer", "android", "platform", "build-*",
-                     "build", "venv", "bin", "pip"),
-    ]
-    for p in patterns:
-        for m in glob.glob(p):
-            venv_pip = m
-            break
-        if venv_pip:
-            break
-
-    if venv_pip:
-        log(f"Found venv pip: {venv_pip}")
-        # Check current version
-        result = subprocess.run([venv_pip, "--version"], capture_output=True, text=True)
-        log(f"Current pip version: {result.stdout.strip()}")
-        if "21.3" not in result.stdout:
-            log("Downgrading pip to 21.3.1...")
-            r = subprocess.run([venv_pip, "install", "pip==21.3.1", "-q"], capture_output=True, text=True)
-            if r.returncode == 0:
-                log("pip downgrade OK")
-            else:
-                log(f"pip downgrade failed: {r.stderr}")
-        else:
-            log("pip already 21.3.1, OK")
-        return
-
-    if attempt % 60 == 0 and attempt > 0:
-        log(f"  Still monitoring... t={attempt}s")
-
-log("Timeout - venv not found")
-MONITOR
-          echo "=== [$(date)] pip downgrade monitor finished ==="
-        } > /tmp/pip_fix.log 2>&1 &
-        FIX_PID=$!
-
-        echo "Started pip downgrade monitor (PID: $FIX_PID)"
-
-        # Run buildozer (NO || true — let real failures propagate)
-        echo "=== [$(date)] Starting buildozer ==="
         buildozer -v android debug 2>&1 | tee buildozer.log
-        BUILD_EXIT=${PIPESTATUS[0]}
-        echo "=== [$(date)] buildozer finished (exit: $BUILD_EXIT) ==="
-
-        # Show fix output
-        echo "=== pip downgrade output ==="
-        cat /tmp/pip_fix.log || echo "No fix output"
-
-        # Kill monitor if still running
-        kill $FIX_PID 2>/dev/null || true
-
-        # Check for APK
+        echo "=== Checking for APK ==="
+        ls -la bin/ 2>/dev/null || echo "bin dir not found"
         if ls bin/*.apk 2>/dev/null; then
-          echo "=== APK found! ==="
-          ls -lh bin/*.apk
+          echo "APK found!"
         else
-          echo "=== NO APK found! ==="
-          echo "Last 50 lines of build log:"
-          tail -n 50 buildozer.log
+          echo "APK NOT found - build may have failed"
+          tail -n 20 buildozer.log
           exit 1
         fi
 
