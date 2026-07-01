@@ -20,6 +20,7 @@ android.permissions = INTERNET,ACCESS_NETWORK_STATE
 android.api = 33
 android.minapi = 21
 android.ndk_api = 25
+android.sdk = /home/runner/android-sdk
 android.accept_sdk_licenses = True
 android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
