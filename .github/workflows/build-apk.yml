@@ -24,13 +24,13 @@ jobs:
         sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool pkg-config
-        # Accept Android SDK licenses
-        mkdir -p /opt/android-sdk/licenses
-        echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > /opt/android-sdk/licenses/android-sdk-license
-        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > /opt/android-sdk/licenses/android-sdk-preview-license
-        echo -e "\nd56f5187479451eabf01fb78af6dfcb131a6481e" >> /opt/android-sdk/licenses/android-sdk-license
-        echo -e "\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232" >> /opt/android-sdk/licenses/android-sdk-license
-        echo "Licenses written"
+        # Pre-accept licenses in buildozer's SDK path
+        mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+        echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo -e "\nd56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo -e "\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "Licenses written at ~/.buildozer"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
@@ -44,7 +44,6 @@ jobs:
         pip3 --version
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        ANDROID_HOME: /opt/android-sdk
         PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     - name: Build APK
@@ -53,23 +52,12 @@ jobs:
         export ANDROIDAPI=27
         export ANDROIDMINAPI=21
         export ANDROIDNDK=25
-        export ANDROID_HOME=/opt/android-sdk
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-        export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+        export PATH=$JAVA_HOME/bin:$PATH
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
         cd "$GITHUB_WORKSPACE"
         buildozer android debug 2>&1 | tee buildozer.log
-        echo "=== Checking for APK ==="
-        ls -la bin/ 2>/dev/null || echo "bin dir not found"
-        if ls bin/*.apk 2>/dev/null; then
-          echo "APK found!"
-        else
-          echo "APK NOT found - build may have failed"
-          tail -n 20 buildozer.log
-          exit 1
-        fi
-        buildozer -v android debug 2>&1 | tee buildozer.log
         echo "=== Checking for APK ==="
         ls -la bin/ 2>/dev/null || echo "bin dir not found"
         if ls bin/*.apk 2>/dev/null; then
