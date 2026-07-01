@@ -77,7 +77,7 @@ jobs:
       run: |
         # Root cause: p4a's hostpython3 recipe installs pip 21.3.1 via ensurepip.
         # pip 21.3.1 + newer resolvelib = ImportError: RequirementInformation.
-        # Fix: after ensurepip, upgrade pip to 24.0 inside hostpython3.build_arch.
+        # Fix: insert pip upgrade after ensurepip in hostpython3.build_arch.
         P4A_DIR=$HOME/p4a-recipes
         rm -rf $P4A_DIR
         mkdir -p $P4A_DIR
@@ -89,42 +89,43 @@ jobs:
         rm -rf $HOME/python-for-android-master $HOME/p4a.zip
         echo "Extracted p4a to $P4A_DIR"
         HOSTPY3=$P4A_DIR/pythonforandroid/recipes/hostpython3/__init__.py
-        echo "=== hostpython3 recipe build_arch end (before patch) ==="
-        grep -n 'ensurepip\|fix_pip_shebangs\|self.ctx.hostpython' $HOSTPY3
-        echo ""
-        # Use Python to patch: insert pip upgrade after fix_pip_shebangs()
-        python3 -c "
-import re
-with open('$HOSTPY3', 'r') as f:
-    content = f.read()
-patch = '''
-        # Upgrade pip to 24.0: fixes ImportError with newer resolvelib
+        # Verify the recipe exists and show ensurepip context
+        grep -n 'ensurepip\|fix_pip_shebangs' $HOSTPY3
+        # Create a temp patch file (avoids YAML quote escaping issues)
+        tee /tmp/pip_patch.py <<'PATCHEOF'
+# Upgrade pip to 24.0: fixes ImportError with newer resolvelib
         shprint(
             sh.Command(self.python_exe),
-            '-m', 'pip', 'install', '--upgrade', 'pip==24.0',
-            _env={'HOME': '/tmp', 'PATH': self.local_bin},
+            "-m", "pip", "install", "--upgrade", "pip==24.0",
+            _env={"HOME": "/tmp", "PATH": self.local_bin},
         )
-
-'''
-if 'pip==24.0' in content:
-    print('pip upgrade already present')
-elif re.search(r'self.fix_pip_shebangs\(\)\s*\n', content):
-    content = re.sub(
-        r'(self.fix_pip_shebangs\(\)\s*\n)',
-        r'\1' + patch,
-        content
-    )
-    with open('$HOSTPY3', 'w') as f:
-        f.write(content)
-    print('pip upgrade injected OK')
+PATCHEOF
+        echo "---Creating sed script---"
+        # Use Python to do the patch (cleaner than complex sed)
+        python3 - - "$HOSTPY3" <<'PYEOF'
+import sys
+hostpy3 = sys.argv[1]
+patch_text = open('/tmp/pip_patch.py').read()
+with open(hostpy3) as f:
+    lines = f.readlines()
+if any('pip==24.0' in l for l in lines):
+    print("pip==24.0 already present")
 else:
-    print('ERROR: pattern not found')
-    print('Last 30 lines:')
-    for l in content.split('\\n')[-30:]:
-        print(repr(l))
-"
-        echo "=== hostpython3 recipe after patch ==="
-        grep -n 'pip==24.0' $HOSTPY3 && echo "Patch OK" || echo "PATCH FAILED"
+        for i, line in enumerate(lines):
+            if 'self.fix_pip_shebangs()' in line:
+                # Insert patch after this line (at index i+1)
+                lines.insert(i+1, patch_text + '\n')
+                break
+        else:
+            print("ERROR: fix_pip_shebangs() not found")
+            sys.exit(1)
+        with open(hostpy3, 'w') as f:
+            f.writelines(lines)
+        print("pip upgrade injected OK")
+PYEOF
+        $HOSTPY3
+        echo "---Verifying patch---"
+        grep -n 'pip==24.0' $HOSTPY3 && echo "PATCH OK" || echo "PATCH FAILED"
         echo "P4A patch complete"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
