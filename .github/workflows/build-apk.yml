@@ -73,6 +73,27 @@ jobs:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
+    - name: Clone and patch python-for-android (fix pip version)
+      run: |
+        # p4a Python recipe hardcodes pip_version='21.3.1' which is incompatible with
+        # newer resolvelib. We clone p4a, patch pip_version, and pass --local-recipes.
+        P4A_DIR=$HOME/p4a-recipes
+        if [ ! -d $P4A_DIR ]; then
+          git clone --depth=1 https://github.com/kivy/python-for-android.git $P4A_DIR
+        fi
+        # Patch python recipe: upgrade pip_version from '21.3.1' to '24.0'
+        PYTHON_RECIPE=$P4A_DIR/pythonforandroid/recipes/python/__init__.py
+        if grep -q "pip_version = '21.3.1'" $PYTHON_RECIPE; then
+          sed -i "s/pip_version = '21.3.1'/pip_version = '24.0'/" $PYTHON_RECIPE
+          echo "Patched pip_version to 24.0 in $PYTHON_RECIPE"
+          grep pip_version $PYTHON_RECIPE
+        else
+          echo "pip_version already patched or not found, checking..."
+          grep -n 'pip_version' $PYTHON_RECIPE || echo "No pip_version found"
+        fi
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
     - name: Install Python packages
       run: |
         python3 --version
@@ -93,6 +114,7 @@ jobs:
         export ANDROIDMINAPI=21
         export ANDROIDNDK=28c
         export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
@@ -101,8 +123,11 @@ jobs:
         echo "=== Pre-installed SDK contents ==="
         ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
         ls -la $ANDROID_HOME/build-tools/ 2>/dev/null || echo "No build-tools"
-        echo "=== Starting buildozer ==="
-        buildozer android debug 2>&1 | tee buildozer.log
+        echo "=== Verifying p4a local recipes ==="
+        P4A_DIR=$HOME/p4a-recipes
+        grep "pip_version" $P4A_DIR/pythonforandroid/recipes/python/__init__.py || echo "pip_version not found"
+        echo "=== Starting buildozer with local-recipes ==="
+        buildozer android debug --local-recipes=$P4A_DIR 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
         tail -n 30 buildozer.log
