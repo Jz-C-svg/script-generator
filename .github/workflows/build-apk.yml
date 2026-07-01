@@ -73,23 +73,58 @@ jobs:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
-    - name: Clone and patch python-for-android (fix pip version)
+    - name: Download and patch python-for-android (fix pip version)
       run: |
-        # p4a Python recipe hardcodes pip_version='21.3.1' which is incompatible with
-        # newer resolvelib on Python 3.11 (ImportError: RequirementInformation).
-        # We clone p4a to $HOME/p4a-recipes, patch the Python recipe, and configure
-        # buildozer.spec to use p4a.source_dir = $HOME/p4a-recipes.
+        # Root cause: p4a's hostpython3 recipe installs pip 21.3.1 via ensurepip.
+        # pip 21.3.1 + newer resolvelib = ImportError: RequirementInformation.
+        # Fix: after ensurepip, upgrade pip to 24.0 inside hostpython3.build_arch.
         P4A_DIR=$HOME/p4a-recipes
         rm -rf $P4A_DIR
-        git clone --depth=1 https://github.com/kivy/python-for-android.git $P4A_DIR
-        echo "Cloned p4a to $P4A_DIR"
-        PYTHON_RECIPE=$P4A_DIR/pythonforandroid/recipes/python/__init__.py
-        echo "Before patch:"
-        grep -n 'pip_version' $PYTHON_RECIPE || echo "pip_version not found"
-        # Patch pip_version from '21.3.1' to '24.0'
-        sed -i "s/pip_version = '21.3.1'/pip_version = '24.0'/" $PYTHON_RECIPE
-        echo "After patch:"
-        grep -n 'pip_version' $PYTHON_RECIPE
+        mkdir -p $P4A_DIR
+        echo "Downloading python-for-android..."
+        curl -fsSL https://github.com/kivy/python-for-android/archive/refs/heads/master.zip -o $HOME/p4a.zip
+        echo "Downloaded: $(wc -c < $HOME/p4a.zip) bytes"
+        unzip -q $HOME/p4a.zip -d $HOME
+        mv $HOME/python-for-android-master/* $P4A_DIR/
+        rm -rf $HOME/python-for-android-master $HOME/p4a.zip
+        echo "Extracted p4a to $P4A_DIR"
+        HOSTPY3=$P4A_DIR/pythonforandroid/recipes/hostpython3/__init__.py
+        echo "=== hostpython3 recipe build_arch end (before patch) ==="
+        grep -n 'ensurepip\|fix_pip_shebangs\|self.ctx.hostpython' $HOSTPY3
+        echo ""
+        # Use Python to patch: insert pip upgrade after fix_pip_shebangs()
+        python3 -c "
+import re
+with open('$HOSTPY3', 'r') as f:
+    content = f.read()
+patch = '''
+        # Upgrade pip to 24.0: fixes ImportError with newer resolvelib
+        shprint(
+            sh.Command(self.python_exe),
+            '-m', 'pip', 'install', '--upgrade', 'pip==24.0',
+            _env={'HOME': '/tmp', 'PATH': self.local_bin},
+        )
+
+'''
+if 'pip==24.0' in content:
+    print('pip upgrade already present')
+elif re.search(r'self.fix_pip_shebangs\(\)\s*\n', content):
+    content = re.sub(
+        r'(self.fix_pip_shebangs\(\)\s*\n)',
+        r'\1' + patch,
+        content
+    )
+    with open('$HOSTPY3', 'w') as f:
+        f.write(content)
+    print('pip upgrade injected OK')
+else:
+    print('ERROR: pattern not found')
+    print('Last 30 lines:')
+    for l in content.split('\\n')[-30:]:
+        print(repr(l))
+"
+        echo "=== hostpython3 recipe after patch ==="
+        grep -n 'pip==24.0' $HOSTPY3 && echo "Patch OK" || echo "PATCH FAILED"
         echo "P4A patch complete"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
@@ -104,7 +139,7 @@ jobs:
         pip3 --version
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        ANDROID_HOME: /home/runner/android-sdk
+        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
         PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     - name: Build APK
@@ -120,19 +155,17 @@ jobs:
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
         cd "$GITHUB_WORKSPACE"
-        echo "=== Verifying p4a.source_dir ==="
-        grep 'p4a.source_dir' buildozer.spec
+        echo "=== Verifying p4a.source_dir in buildozer.spec ==="
         grep 'p4a.source_dir' buildozer.spec && echo "Using patched p4a from $HOME/p4a-recipes"
-        ls -la $HOME/p4a-recipes/pythonforandroid/recipes/python/__init__.py
-        echo "pip_version in p4a recipe:"
-        grep 'pip_version' $HOME/p4a-recipes/pythonforandroid/recipes/python/__init__.py
+        echo "=== Verifying pip==24.0 in hostpython3 recipe ==="
+        grep -n 'pip==24.0' $HOME/p4a-recipes/pythonforandroid/recipes/hostpython3/__init__.py || echo "PATCH MISSING"
         echo "=== Pre-installed SDK ==="
         ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
         echo "=== Starting buildozer (using patched p4a from p4a.source_dir) ==="
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
-        tail -n 30 buildozer.log
+        tail -n 50 buildozer.log
         echo "=== Checking for APK ==="
         ls -la bin/ 2>/dev/null || echo "bin dir not found"
         if ls bin/*.apk 2>/dev/null; then
