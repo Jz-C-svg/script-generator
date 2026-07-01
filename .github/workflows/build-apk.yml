@@ -71,6 +71,7 @@ jobs:
         ls -la $BUILDOZER_SDK/build-tools/ 2>/dev/null || echo "No build-tools installed yet"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
     - name: Install Python packages
       run: |
