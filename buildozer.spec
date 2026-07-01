@@ -10,7 +10,7 @@ source.include_exts = py,png,jpg,kv,atlas
 version = 1.0.0
 version.code = 1
 
-requirements = hostpython3==3.11.0,python3==3.11.0,kivy==2.2.1,kivymd==1.1.1,httpx,bs4
+requirements = hostpython3==3.11.0,python3==3.11.0,kivy==2.2.1,kivymd==1.0.2,httpx,bs4
 
 orientation = portrait
 
@@ -20,7 +20,6 @@ android.permissions = INTERNET,ACCESS_NETWORK_STATE
 android.api = 33
 android.minapi = 21
 android.ndk_api = 25
-android.sdk = /home/runner/android-sdk
 android.accept_sdk_licenses = True
 android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
@@ -28,5 +27,7 @@ android.allow_backup = True
 [buildozer]
 
 log_level = 2
+
+p4a.source_dir = /home/runner/p4a-recipes
 
 warn_on_root = 1
