@@ -76,31 +76,31 @@ jobs:
     - name: Clone and patch python-for-android (fix pip version)
       run: |
         # p4a Python recipe hardcodes pip_version='21.3.1' which is incompatible with
-        # newer resolvelib. We clone p4a, patch pip_version, and pass --local-recipes.
+        # newer resolvelib on Python 3.11 (ImportError: RequirementInformation).
+        # We clone p4a to $HOME/p4a-recipes, patch the Python recipe, and configure
+        # buildozer.spec to use p4a.source_dir = $HOME/p4a-recipes.
         P4A_DIR=$HOME/p4a-recipes
-        if [ ! -d $P4A_DIR ]; then
-          git clone --depth=1 https://github.com/kivy/python-for-android.git $P4A_DIR
-        fi
-        # Patch python recipe: upgrade pip_version from '21.3.1' to '24.0'
+        rm -rf $P4A_DIR
+        git clone --depth=1 https://github.com/kivy/python-for-android.git $P4A_DIR
+        echo "Cloned p4a to $P4A_DIR"
         PYTHON_RECIPE=$P4A_DIR/pythonforandroid/recipes/python/__init__.py
-        if grep -q "pip_version = '21.3.1'" $PYTHON_RECIPE; then
-          sed -i "s/pip_version = '21.3.1'/pip_version = '24.0'/" $PYTHON_RECIPE
-          echo "Patched pip_version to 24.0 in $PYTHON_RECIPE"
-          grep pip_version $PYTHON_RECIPE
-        else
-          echo "pip_version already patched or not found, checking..."
-          grep -n 'pip_version' $PYTHON_RECIPE || echo "No pip_version found"
-        fi
+        echo "Before patch:"
+        grep -n 'pip_version' $PYTHON_RECIPE || echo "pip_version not found"
+        # Patch pip_version from '21.3.1' to '24.0'
+        sed -i "s/pip_version = '21.3.1'/pip_version = '24.0'/" $PYTHON_RECIPE
+        echo "After patch:"
+        grep -n 'pip_version' $PYTHON_RECIPE
+        echo "P4A patch complete"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     - name: Install Python packages
       run: |
         python3 --version
-        pip3 install --upgrade pip==21.3.1 setuptools==65.5.0 wheel
+        pip3 install --upgrade pip wheel
         pip3 install "cython<3"
         pip3 install buildozer==1.5.0
-        pip3 install kivy==2.2.1 kivymd==1.1.1 httpx beautifulsoup4
+        pip3 install kivy==2.2.1 kivymd==1.0.2 httpx beautifulsoup4
         pip3 --version
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
@@ -120,14 +120,16 @@ jobs:
         export BUILDOZER_ALLOW_ROOT=1
         export BUILDOZER_WARN_ON_ROOT=0
         cd "$GITHUB_WORKSPACE"
-        echo "=== Pre-installed SDK contents ==="
+        echo "=== Verifying p4a.source_dir ==="
+        grep 'p4a.source_dir' buildozer.spec
+        grep 'p4a.source_dir' buildozer.spec && echo "Using patched p4a from $HOME/p4a-recipes"
+        ls -la $HOME/p4a-recipes/pythonforandroid/recipes/python/__init__.py
+        echo "pip_version in p4a recipe:"
+        grep 'pip_version' $HOME/p4a-recipes/pythonforandroid/recipes/python/__init__.py
+        echo "=== Pre-installed SDK ==="
         ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
-        ls -la $ANDROID_HOME/build-tools/ 2>/dev/null || echo "No build-tools"
-        echo "=== Verifying p4a local recipes ==="
-        P4A_DIR=$HOME/p4a-recipes
-        grep "pip_version" $P4A_DIR/pythonforandroid/recipes/python/__init__.py || echo "pip_version not found"
-        echo "=== Starting buildozer with local-recipes ==="
-        buildozer android debug --local-recipes=$P4A_DIR 2>&1 | tee buildozer.log
+        echo "=== Starting buildozer (using patched p4a from p4a.source_dir) ==="
+        buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
         tail -n 30 buildozer.log
