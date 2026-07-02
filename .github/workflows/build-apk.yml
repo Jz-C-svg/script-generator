@@ -95,7 +95,7 @@ jobs:
         # --- Patch build.py: comment out 'pip install -U pip' line ---
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "=== Patching build.py to remove pip upgrade (prevents resolvelib incompatibility) ==="
-        python3 - <<'PYEOF'
+        python3 <<'PYEOF'
 import sys
 path = '$BUILD_PY'
 with open(path) as f:
