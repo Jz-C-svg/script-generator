@@ -53,7 +53,7 @@ jobs:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
-    - name: Download and patch python-for-android (fix pip resolvelib)
+    - name: Download and patch python-for-android
       run: |
         P4A_DIR=$HOME/p4a-recipes
         rm -rf $P4A_DIR
@@ -64,11 +64,22 @@ jobs:
         mv $HOME/python-for-android-master/* $P4A_DIR/
         rm -rf $HOME/python-for-android-master $HOME/p4a.zip
         echo "Extracted p4a to $P4A_DIR"
+
+        # === Patch 1: python3 recipe __init__.py - upgrade pip after ensurepip ===
+        INIT_PY=$P4A_DIR/pythonforandroid/recipes/python3/__init__.py
+        echo "Patching $INIT_PY for pip upgrade..."
+        # Insert pip upgrade line right after "then ensurepip --upgrade" in the venv
+        sed -i '/^            then ensurepip --upgrade$/a\                sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
+        grep -n "ensurepip --upgrade" "$INIT_PY" || echo "ensurepip line not found"
+        echo "Recipe pip upgrade patch: done"
+
+        # === Patch 2: build.py - enable pip upgrade in p4a toolchain venv ===
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
-        echo "=== Patching build.py to comment out pip upgrade ==="
-                sed -i 's/"source venv\/bin\/activate \&\& pip install -U pip"/# "source venv\/bin\/activate \&\& pip install -U pip"  # COMMENTED OUT/' "$BUILD_PY"
-        grep -n 'pip install -U pip' "$BUILD_PY" && echo "PATCH FAILED" || echo "PATCH OK"
-        echo "P4A patch done"
+        echo "Patching $BUILD_PY..."
+        # Replace commented-out pip upgrade with working version (with --trusted-host)
+        sed -i 's/#            "source venv\/bin\/activate \&\& pip install -U pip"  # COMMENTED OUT/            "source venv\/bin\/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"/' "$BUILD_PY"
+        grep -n 'pip install --upgrade' "$BUILD_PY"
+        echo "P4A patches done"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
@@ -95,6 +106,18 @@ jobs:
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
+
+        # Upgrade pip in buildozer's own venv (fixes pip 21.3.1 resolver bug)
+        echo "Upgrading pip in buildozer venv..."
+        VENV_PIP=$(find $HOME/.buildozer -name pip -type f 2>/dev/null | grep venv/bin/pip | head -1)
+        if [ -n "$VENV_PIP" ] && [ -f "$VENV_PIP" ]; then
+          echo "Found venv pip: $VENV_PIP"
+          python3 -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip -t "$HOME/.local/lib/python3.10/site-packages" 2>&1 | tail -3 || true
+          $VENV_PIP install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip 2>&1 | tail -5 || true
+        else
+          echo "No buildozer venv pip found yet, will upgrade system pip in venvs later"
+        fi
+
         cd "$GITHUB_WORKSPACE"
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
