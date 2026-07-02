@@ -66,21 +66,7 @@ jobs:
         echo "Extracted p4a to $P4A_DIR"
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "=== Patching build.py to comment out pip upgrade ==="
-        python3 -c "
-import sys
-path = sys.argv[1]
-with open(path) as f:
-    content = f.read()
-OLD = '            \"source venv/bin/activate && pip install -U pip\"'
-NEW = '            # \"source venv/bin/activate && pip install -U pip\"  # COMMENTED OUT'
-if OLD in content:
-    content = content.replace(OLD, NEW)
-    with open(path, 'w') as f:
-        f.write(content)
-    print('build.py: pip upgrade line commented out OK')
-else:
-    print('build.py: pattern not found')
-" "$BUILD_PY"
+        python3 -c "import sys;bp=sys.argv[1];open(bp).write(open(bp).read().replace('            \\\\\"source venv/bin/activate && pip install -U pip\\\\\"','            # \\\\\"source venv/bin/activate && pip install -U pip\\\\\"  # COMMENTED OUT'));print('OK')" "$BUILD_PY"
         grep -n 'pip install -U pip' "$BUILD_PY" && echo "PATCH FAILED" || echo "PATCH OK"
         echo "P4A patch done"
       env:
