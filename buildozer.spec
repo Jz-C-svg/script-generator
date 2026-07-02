@@ -29,5 +29,6 @@ android.allow_backup = True
 log_level = 2
 
 p4a.source_dir = /home/runner/p4a-recipes
+p4a.python3_version = 3.11.0
 
 warn_on_root = 1
