@@ -125,6 +125,8 @@ jobs:
         done
 
         cd "$GITHUB_WORKSPACE"
+        # Clean previous build artifacts to avoid cached Python 3.14
+        rm -rf .buildozer || true
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
