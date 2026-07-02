@@ -84,9 +84,9 @@ jobs:
         echo "Patching $BUILD_PY..."
         # Replace pip install -U pip with python -m pip install --upgrade
         # This uses Python's own pip module to upgrade pip (bypasses broken pip binary)
-        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
         # Also handle commented version if it exists
-        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
         # Verify - use || true so grep failure doesn't exit the step
         echo "Checking build.py pip line:"
         grep "source venv/bin/activate" "$BUILD_PY" || true
