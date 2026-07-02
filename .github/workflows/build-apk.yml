@@ -72,7 +72,6 @@ jobs:
         export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
         export BUILDOZER_ALLOW_ROOT=1
 
-        # Buildozer expects p4a at this exact path:
         BUILDOZER_P4A=$HOME/.buildozer/android/platform/python-for-android
         P4A_URL=https://github.com/kivy/python-for-android/archive/refs/heads/master.zip
 
@@ -86,26 +85,24 @@ jobs:
         mv /tmp/python-for-android-master $BUILDOZER_P4A
         rm -f /tmp/p4a.zip
         echo "Extracted p4a to $BUILDOZER_P4A"
-        ls $BUILDOZER_P4A/pythonforandroid/build.py
 
-        # === Patch 1: hostpython3 __init__.py ===
+        # === Patch 1: hostpython3 __init__.py - add pip upgrade after ensurepip ===
         INIT_PY=$BUILDOZER_P4A/pythonforandroid/recipes/hostpython3/__init__.py
         echo "=== Patching $INIT_PY ==="
         sed -i '/^        ensurepip$/a\            sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--no-deps", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
         if grep -q 'trusted-host.*pypi.org' "$INIT_PY"; then
           echo "hostpython3 patch VERIFIED"
         else
-          echo "WARNING: hostpython3 patch may not have applied, checking..."
+          echo "WARNING: hostpython3 patch may not have applied"
           grep -n 'ensurepip' "$INIT_PY" | head -5
         fi
 
-        # === Patch 2: build.py pip upgrade ===
+        # === Patch 2: build.py pip upgrade - simple sed, replace only the pip cmd ===
         BUILD_PY=$BUILDOZER_P4A/pythonforandroid/build.py
         echo "=== Patching $BUILD_PY ==="
-        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
-        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
-        echo "Checking build.py pip line:"
-        grep "source venv/bin/activate" "$BUILD_PY" || echo "NOT FOUND"
+        sed -i 's|pip install -U pip|python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip|g' "$BUILD_PY"
+        echo "After patch, pip line is:"
+        grep -n 'pip install' "$BUILD_PY" | grep -v 'grep\|install.*Cython\|install.*patchelf\|install.*setuptools\|install.*wheel\|install.*build\|install.*jinja\|install.*sh '
         echo "=== P4A patches done ==="
 
     - name: Build APK
@@ -120,7 +117,7 @@ jobs:
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
         cd "$GITHUB_WORKSPACE"
-        # Clean build artifacts only (keep p4a in .buildozer)
+        # Clean build artifacts only (keep patched p4a in .buildozer)
         rm -rf .buildozer/android/platform/build-* 2>/dev/null || true
         rm -rf .buildozer/android/app 2>/dev/null || true
         buildozer android debug 2>&1 | tee buildozer.log
