@@ -95,16 +95,15 @@ jobs:
         # --- Patch build.py: comment out 'pip install -U pip' line ---
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "=== Patching build.py to remove pip upgrade (prevents resolvelib incompatibility) ==="
-        python3 -c "
-import re
+        python3 - <<'PYEOF'
+import sys
 path = '$BUILD_PY'
 with open(path) as f:
     content = f.read()
 
 # Comment out the 'pip install -U pip' line inside the shprint call
-# Match: any line with 'pip install -U pip' and add # in front
-old = '            \"source venv/bin/activate && pip install -U pip\"'
-new = '            # \"source venv/bin/activate && pip install -U pip\"  # COMMENTED OUT: pip 21.3.1 cannot resolve pip 25.x deps'
+old = '            "source venv/bin/activate && pip install -U pip"'
+new = '            # "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT: pip 21.3.1 cannot resolve pip 25.x deps'
 if old in content:
     content = content.replace(old, new)
     with open(path, 'w') as f:
@@ -115,7 +114,7 @@ else:
     for i, line in enumerate(content.split('\n')):
         if 'pip install -U pip' in line:
             print(f'  Line {i+1}: {line}')
-"
+PYEOF
         grep -n 'pip install -U pip' $BUILD_PY && echo "build.py PATCH FAILED" || echo "build.py PATCH OK"
 
         echo "P4A patch complete"
