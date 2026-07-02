@@ -120,6 +120,10 @@ jobs:
         python3 /tmp/patch_hostpy3.py "$HOSTPY3"
         echo "---Verifying patch---"
         grep -n 'pip==24.0' $HOSTPY3 && echo "PATCH OK" || echo "PATCH FAILED"
+        # ALSO patch build.py: prevent 'pip install -U pip' from upgrading to 25.x
+        echo "=== Patching build.py to lock pip at 24.0 ==="
+        sed -i 's|pip install -U pip|pip install -U pip==24.0|' $P4A_DIR/pythonforandroid/build.py
+        grep -n 'pip==24.0' $P4A_DIR/pythonforandroid/build.py && echo "build.py PATCH OK" || echo "build.py PATCH FAILED"
         echo "P4A patch complete"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
