@@ -75,9 +75,12 @@ jobs:
 
     - name: Download and patch python-for-android (fix pip version)
       run: |
-        # Root cause: p4a's hostpython3 recipe installs pip 21.3.1 via ensurepip.
-        # pip 21.3.1 + newer resolvelib = ImportError: RequirementInformation.
-        # Fix: insert pip upgrade after ensurepip in hostpython3.build_arch.
+        # Root cause:
+        #   1. hostpython3 recipe uses ensurepip to install pip 21.3.1 into the venv
+        #   2. p4a build.py runs 'pip install -U pip' to upgrade venv pip
+        #   3. pip 21.3.1's bundled resolvelib cannot resolve pip 25.x deps -> ImportError
+        # Fix: patch build.py to comment out the 'pip install -U pip' upgrade step entirely.
+        #      The venv will keep pip from ensurepip (which hostpython3 already patched to pip==24.0).
         P4A_DIR=$HOME/p4a-recipes
         rm -rf $P4A_DIR
         mkdir -p $P4A_DIR
@@ -88,42 +91,33 @@ jobs:
         mv $HOME/python-for-android-master/* $P4A_DIR/
         rm -rf $HOME/python-for-android-master $HOME/p4a.zip
         echo "Extracted p4a to $P4A_DIR"
-        HOSTPY3=$P4A_DIR/pythonforandroid/recipes/hostpython3/__init__.py
-        # Verify the recipe exists and show ensurepip context
-        grep -n 'ensurepip\|fix_pip_shebangs' $HOSTPY3
-        # Write pip patch text to file using printf (avoids heredoc YAML issues)
-        printf '%s\n' \
-            "# Upgrade pip to 24.0" \
-            "        shprint(" \
-            "            sh.Command(self.python_exe)," \
-            "            '-m', 'pip', 'install', '--upgrade', 'pip==24.0'," \
-            "            _env={'HOME': '/tmp', 'PATH': self.local_bin}," \
-            "        )" > /tmp/pip_patch.py
-        # Write Python patcher to file using printf
-        printf '%s\n' \
-            "import sys" \
-            "hostpy3 = sys.argv[1]" \
-            "patch_text = open('/tmp/pip_patch.py').read()" \
-            "lines = open(hostpy3).readlines()" \
-            "if any('pip==24.0' in l for l in lines):" \
-            "    print('pip==24.0 already present')" \
-            "else:" \
-            "    for i, line in enumerate(lines):" \
-            "        if 'self.fix_pip_shebangs()' in line:" \
-            "            lines.insert(i+1, patch_text)" \
-            "            break" \
-            "    else:" \
-            "        print('ERROR: fix_pip_shebangs not found')" \
-            "        sys.exit(1)" \
-            "    open(hostpy3, 'w').writelines(lines)" \
-            "    print('pip upgrade injected OK')" > /tmp/patch_hostpy3.py
-        python3 /tmp/patch_hostpy3.py "$HOSTPY3"
-        echo "---Verifying patch---"
-        grep -n 'pip==24.0' $HOSTPY3 && echo "PATCH OK" || echo "PATCH FAILED"
-        # ALSO patch build.py: prevent 'pip install -U pip' from upgrading to 25.x
-        echo "=== Patching build.py to lock pip at 24.0 ==="
-        sed -i 's|pip install -U pip|pip install -U pip==24.0|' $P4A_DIR/pythonforandroid/build.py
-        grep -n 'pip==24.0' $P4A_DIR/pythonforandroid/build.py && echo "build.py PATCH OK" || echo "build.py PATCH FAILED"
+
+        # --- Patch build.py: comment out 'pip install -U pip' line ---
+        BUILD_PY=$P4A_DIR/pythonforandroid/build.py
+        echo "=== Patching build.py to remove pip upgrade (prevents resolvelib incompatibility) ==="
+        python3 -c "
+import re
+path = '$BUILD_PY'
+with open(path) as f:
+    content = f.read()
+
+# Comment out the 'pip install -U pip' line inside the shprint call
+# Match: any line with 'pip install -U pip' and add # in front
+old = '            \"source venv/bin/activate && pip install -U pip\"'
+new = '            # \"source venv/bin/activate && pip install -U pip\"  # COMMENTED OUT: pip 21.3.1 cannot resolve pip 25.x deps'
+if old in content:
+    content = content.replace(old, new)
+    with open(path, 'w') as f:
+        f.write(content)
+    print('build.py: pip upgrade line commented out OK')
+else:
+    print('build.py: pattern not found - checking current content...')
+    for i, line in enumerate(content.split('\n')):
+        if 'pip install -U pip' in line:
+            print(f'  Line {i+1}: {line}')
+"
+        grep -n 'pip install -U pip' $BUILD_PY && echo "build.py PATCH FAILED" || echo "build.py PATCH OK"
+
         echo "P4A patch complete"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
