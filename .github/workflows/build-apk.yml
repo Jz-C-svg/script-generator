@@ -53,47 +53,6 @@ jobs:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
-    - name: Download and patch python-for-android
-      run: |
-        P4A_DIR=$HOME/p4a-recipes
-        rm -rf $P4A_DIR
-        mkdir -p $P4A_DIR
-        echo "Downloading python-for-android..."
-        curl -fsSL https://github.com/kivy/python-for-android/archive/refs/heads/master.zip -o $HOME/p4a.zip
-        unzip -q $HOME/p4a.zip -d $HOME
-        mv $HOME/python-for-android-master/* $P4A_DIR/
-        rm -rf $HOME/python-for-android-master $HOME/p4a.zip
-        echo "Extracted p4a to $P4A_DIR"
-
-        # === Patch 1: python3 recipe __init__.py ===
-        # In p4a master, ensurepip is called at line ~113 (no "then" prefix).
-        # Insert pip upgrade after ensurepip.
-        INIT_PY=$P4A_DIR/pythonforandroid/recipes/python3/__init__.py
-        echo "Patching $INIT_PY..."
-        sed -i '/^        ensurepip$/a\            sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
-        echo "Recipe pip upgrade: patched"
-        # Verify
-        if grep -q 'trusted-host.*pypi.org' "$INIT_PY"; then
-          echo "Recipe patch VERIFIED"
-        else
-          echo "Recipe patch may not have applied (check manually)"
-        fi
-
-        # === Patch 2: build.py - upgrade pip using python -m pip (bypasses broken pip itself) ===
-        BUILD_PY=$P4A_DIR/pythonforandroid/build.py
-        echo "Patching $BUILD_PY..."
-        # Replace pip install -U pip with python -m pip install --upgrade
-        # This uses Python's own pip module to upgrade pip (bypasses broken pip binary)
-        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
-        # Also handle commented version if it exists
-        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
-        # Verify - use || true so grep failure doesn't exit the step
-        echo "Checking build.py pip line:"
-        grep "source venv/bin/activate" "$BUILD_PY" || true
-        echo "P4A patches done"
-      env:
-        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-
     - name: Install Python packages
       run: |
         python3 --version
@@ -106,7 +65,58 @@ jobs:
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
         PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/hostedtoolcache/Python/3.10.20/x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-    - name: Build APK
+    - name: Bootstrap buildozer (download p4a)
+      run: |
+        export ANDROIDAPI=33
+        export ANDROIDMINAPI=21
+        export ANDROIDNDK=28c
+        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+        export BUILDOZER_ALLOW_ROOT=1
+        cd "$GITHUB_WORKSPACE"
+        rm -rf .buildozer || true
+        # Run buildozer once to let it download its bundled python-for-android
+        # It will fail, but that's ok - we just need the p4a source
+        echo "=== Bootstrapping buildozer to download p4a (expect failure) ==="
+        timeout 120 buildozer android debug 2>&1 | tail -5 || true
+        echo "Bootstrap done"
+
+    - name: Patch buildozer's built-in p4a (fix pip resolvelib bug)
+      run: |
+        BUILDOZER_P4A=$HOME/.buildozer/android/platform/python-for-android/pythonforandroid
+        if [ -d "$BUILDOZER_P4A" ]; then
+          echo "Found buildozer's p4a at $BUILDOZER_P4A"
+        else
+          echo "ERROR: buildozer p4a not found at $BUILDOZER_P4A"
+          ls $HOME/.buildozer/android/platform/ 2>/dev/null || echo "No platform dir"
+          exit 1
+        fi
+
+        # === Patch 1: hostpython3 __init__.py - add pip upgrade after ensurepip ===
+        INIT_PY=$BUILDOZER_P4A/recipes/hostpython3/__init__.py
+        echo "Patching $INIT_PY..."
+        # Insert pip upgrade after the ensurepip line
+        sed -i '/^        ensurepip$/a\            sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--no-deps", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
+        if grep -q 'trusted-host.*pypi.org' "$INIT_PY"; then
+          echo "hostpython3 patch VERIFIED"
+        else
+          echo "WARNING: hostpython3 patch may not have applied"
+        fi
+
+        # === Patch 2: build.py - upgrade pip using python -m pip --no-deps ===
+        BUILD_PY=$BUILDOZER_P4A/build.py
+        echo "Patching $BUILD_PY..."
+        # Replace pip install -U pip with python -m pip install --upgrade --no-deps
+        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        # Also handle any commented version
+        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --no-deps --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        echo "Checking build.py pip line:"
+        grep "source venv/bin/activate" "$BUILD_PY" || true
+        echo "P4A patches applied to buildozer's built-in p4a"
+
+    - name: Build APK (with patched p4a)
       timeout-minutes: 120
       run: |
         export ANDROIDAPI=33
@@ -117,18 +127,11 @@ jobs:
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
-
-        # Upgrade pip in buildozer's own venv (fixes pip 21.3.1 resolver bug)
-        echo "Upgrading pip in buildozer venv..."
-        for VENV_PIP in $(find $HOME/.buildozer -name pip -type f 2>/dev/null | grep venv/bin/pip); do
-          echo "Upgrading pip at: $VENV_PIP"
-          $VENV_PIP install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip 2>&1 | tail -3 || true
-        done
-
         cd "$GITHUB_WORKSPACE"
-        # Clean previous build artifacts for a fresh build
-        rm -rf .buildozer || true
-        # Run buildozer (pip will be auto-upgraded in build.py's venv creation)
+        # Keep .buildozer but rebuild the APK parts
+        rm -rf .buildozer/android/platform/build-* || true
+        rm -rf .buildozer/android/app || true
+        # Run buildozer (p4a is already patched in place)
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
