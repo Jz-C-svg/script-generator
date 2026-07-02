@@ -24,102 +24,67 @@ jobs:
         sudo apt-get install -y openjdk-17-jdk
         sudo apt-get install -y zlib1g-dev libncurses-dev cmake wget unzip
         sudo apt-get install -y libffi-dev libssl-dev git autoconf automake libtool pkg-config
-        # IMPORTANT: android.sdk config token is deprecated and ignored in buildozer.
-        # Buildozer always uses ~/.buildozer/android/platform/android-sdk/ for its SDK.
-        # We must download cmdlinetools to THIS path, not anywhere else.
         BUILDOZER_SDK=$HOME/.buildozer/android/platform/android-sdk
         mkdir -p $BUILDOZER_SDK/cmdlinetools
         if [ ! -f $BUILDOZER_SDK/cmdlinetools/latest/bin/sdkmanager ]; then
-          echo "Downloading Android SDK commandlinetools to buildozer SDK path..."
+          echo "Downloading Android SDK commandlinetools..."
           cd $BUILDOZER_SDK/cmdlinetools
           curl -L -o cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          echo "Downloaded, size: $(wc -c < cmdline.zip) bytes"
           unzip -q cmdline.zip
-          # New cmdlinetools zip creates cmdline-tools/ directory at the root
           if [ -d cmdline-tools ]; then
             mv cmdline-tools latest
           elif [ -d tools ]; then
-            # Old zip creates tools/ directory
             mv tools latest
           fi
           rm -f cmdline.zip
-          echo "SDK tools installed at $BUILDOZER_SDK"
-          ls -la $BUILDOZER_SDK/cmdlinetools/latest/bin/
         fi
-        # Create compatibility symlinks: p4a looks for sdkmanager at tools/bin/sdkmanager
-        # but cmdlinetools-v3 has it at cmdlinetools/latest/bin/sdkmanager
         if [ -d $BUILDOZER_SDK/cmdlinetools/latest/bin ] && [ ! -d $BUILDOZER_SDK/tools ]; then
           mkdir -p $BUILDOZER_SDK/tools/bin
           ln -s $BUILDOZER_SDK/cmdlinetools/latest/bin/* $BUILDOZER_SDK/tools/bin/
-          echo "Symlinks created: tools/bin/ -> cmdlinetools/latest/bin/"
-          ls -la $BUILDOZER_SDK/tools/bin/
         fi
-        # Accept all SDK licenses by writing license files directly to buildozer's SDK path
         mkdir -p $BUILDOZER_SDK/licenses
         printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb52fb78af6dfcb131a6481e\ne6b7c2ab7fa2298c15165e9583d0acf0b04a2232\n" > $BUILDOZER_SDK/licenses/android-sdk-license
         printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $BUILDOZER_SDK/licenses/android-sdk-preview-license
-        echo "License files written to $BUILDOZER_SDK/licenses/"
-        ls -la $BUILDOZER_SDK/licenses/
-        # Pre-install required SDK components using sdkmanager so buildozer/p4a
-        # doesn't need to install them itself (which is slow and may timeout)
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$BUILDOZER_SDK/cmdlinetools/latest/bin:$PATH
-        echo "Pre-installing SDK components with sdkmanager..."
         yes | sdkmanager --sdk_root=$BUILDOZER_SDK "platforms;android-33" "build-tools;33.0.2" "platform-tools" 2>&1 | tail -5 || true
-        echo "SDK components pre-installed"
-        ls -la $BUILDOZER_SDK/platforms/ 2>/dev/null || echo "No platforms installed yet"
-        ls -la $BUILDOZER_SDK/build-tools/ 2>/dev/null || echo "No build-tools installed yet"
+        echo "SDK ready"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
-    - name: Download and patch python-for-android (fix pip version)
+    - name: Download and patch python-for-android (fix pip resolvelib)
       run: |
-        # Root cause:
-        #   1. hostpython3 recipe uses ensurepip to install pip 21.3.1 into the venv
-        #   2. p4a build.py runs 'pip install -U pip' to upgrade venv pip
-        #   3. pip 21.3.1's bundled resolvelib cannot resolve pip 25.x deps -> ImportError
-        # Fix: patch build.py to comment out the 'pip install -U pip' upgrade step entirely.
-        #      The venv will keep pip from ensurepip (which hostpython3 already patched to pip==24.0).
         P4A_DIR=$HOME/p4a-recipes
         rm -rf $P4A_DIR
         mkdir -p $P4A_DIR
         echo "Downloading python-for-android..."
         curl -fsSL https://github.com/kivy/python-for-android/archive/refs/heads/master.zip -o $HOME/p4a.zip
-        echo "Downloaded: $(wc -c < $HOME/p4a.zip) bytes"
         unzip -q $HOME/p4a.zip -d $HOME
         mv $HOME/python-for-android-master/* $P4A_DIR/
         rm -rf $HOME/python-for-android-master $HOME/p4a.zip
         echo "Extracted p4a to $P4A_DIR"
-
-        # --- Patch build.py: comment out 'pip install -U pip' line ---
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
-        echo "=== Patching build.py to remove pip upgrade (prevents resolvelib incompatibility) ==="
-        python3 <<'PYEOF'
+        echo "=== Patching build.py to comment out pip upgrade ==="
+        python3 -c "
 import sys
-path = '$BUILD_PY'
+path = sys.argv[1]
 with open(path) as f:
     content = f.read()
-
-# Comment out the 'pip install -U pip' line inside the shprint call
-old = '            "source venv/bin/activate && pip install -U pip"'
-new = '            # "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT: pip 21.3.1 cannot resolve pip 25.x deps'
-if old in content:
-    content = content.replace(old, new)
+OLD = '            \"source venv/bin/activate && pip install -U pip\"'
+NEW = '            # \"source venv/bin/activate && pip install -U pip\"  # COMMENTED OUT'
+if OLD in content:
+    content = content.replace(OLD, NEW)
     with open(path, 'w') as f:
         f.write(content)
     print('build.py: pip upgrade line commented out OK')
 else:
-    print('build.py: pattern not found - checking current content...')
-    for i, line in enumerate(content.split('\n')):
-        if 'pip install -U pip' in line:
-            print(f'  Line {i+1}: {line}')
-PYEOF
-        grep -n 'pip install -U pip' $BUILD_PY && echo "build.py PATCH FAILED" || echo "build.py PATCH OK"
-
-        echo "P4A patch complete"
-        env:
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    print('build.py: pattern not found')
+" "$BUILD_PY"
+        grep -n 'pip install -U pip' "$BUILD_PY" && echo "PATCH FAILED" || echo "PATCH OK"
+        echo "P4A patch done"
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     - name: Install Python packages
       run: |
@@ -128,7 +93,6 @@ PYEOF
         pip3 install "cython<3"
         pip3 install buildozer==1.5.0
         pip3 install kivy==2.2.1 kivymd==1.0.2 httpx beautifulsoup4
-        pip3 --version
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
@@ -145,27 +109,12 @@ PYEOF
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdlinetools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
         export BUILDOZER_ALLOW_ROOT=1
-        export BUILDOZER_WARN_ON_ROOT=0
         cd "$GITHUB_WORKSPACE"
-        echo "=== Verifying p4a.source_dir in buildozer.spec ==="
-        grep 'p4a.source_dir' buildozer.spec && echo "Using patched p4a from $HOME/p4a-recipes"
-        echo "=== Verifying pip==24.0 in hostpython3 recipe ==="
-        grep -n 'pip==24.0' $HOME/p4a-recipes/pythonforandroid/recipes/hostpython3/__init__.py || echo "PATCH MISSING"
-        echo "=== Pre-installed SDK ==="
-        ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
-        echo "=== Starting buildozer (using patched p4a from p4a.source_dir) ==="
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
         tail -n 50 buildozer.log
-        echo "=== Checking for APK ==="
-        ls -la bin/ 2>/dev/null || echo "bin dir not found"
-        if ls bin/*.apk 2>/dev/null; then
-          echo "APK found!"
-        else
-          echo "APK NOT found - build failed"
-          exit 1
-        fi
+        ls bin/*.apk 2>/dev/null && echo "APK found!" || (echo "APK NOT found"; exit 1)
 
     - name: Upload APK
       if: success()
