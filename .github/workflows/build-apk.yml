@@ -66,7 +66,7 @@ jobs:
         echo "Extracted p4a to $P4A_DIR"
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "=== Patching build.py to comment out pip upgrade ==="
-        python3 -c "import sys;bp=sys.argv[1];open(bp).write(open(bp).read().replace('            \\\\\"source venv/bin/activate && pip install -U pip\\\\\"','            # \\\\\"source venv/bin/activate && pip install -U pip\\\\\"  # COMMENTED OUT'));print('OK')" "$BUILD_PY"
+                sed -i 's/"source venv\/bin\/activate \&\& pip install -U pip"/# "source venv\/bin\/activate \&\& pip install -U pip"  # COMMENTED OUT/' "$BUILD_PY"
         grep -n 'pip install -U pip' "$BUILD_PY" && echo "PATCH FAILED" || echo "PATCH OK"
         echo "P4A patch done"
       env:
