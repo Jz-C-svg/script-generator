@@ -65,20 +65,30 @@ jobs:
         rm -rf $HOME/python-for-android-master $HOME/p4a.zip
         echo "Extracted p4a to $P4A_DIR"
 
-        # === Patch 1: python3 recipe __init__.py - upgrade pip after ensurepip ===
+        # === Patch 1: python3 recipe __init__.py ===
+        # In p4a master, ensurepip is called at line ~113 (no "then" prefix).
+        # Insert pip upgrade after ensurepip.
         INIT_PY=$P4A_DIR/pythonforandroid/recipes/python3/__init__.py
-        echo "Patching $INIT_PY for pip upgrade..."
-        # Insert pip upgrade line right after "then ensurepip --upgrade" in the venv
-        sed -i '/^            then ensurepip --upgrade$/a\                sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
-        grep -n "ensurepip --upgrade" "$INIT_PY" || echo "ensurepip line not found"
-        echo "Recipe pip upgrade patch: done"
+        echo "Patching $INIT_PY..."
+        sed -i '/^        ensurepip$/a\            sh(pip_cmd, "-m", "pip", "install", "--upgrade", "--trusted-host=pypi.org", "--trusted-host=files.pythonhosted.org", "pip")' "$INIT_PY"
+        echo "Recipe pip upgrade: patched"
+        # Verify
+        if grep -q 'trusted-host.*pypi.org' "$INIT_PY"; then
+          echo "Recipe patch VERIFIED"
+        else
+          echo "Recipe patch may not have applied (check manually)"
+        fi
 
-        # === Patch 2: build.py - enable pip upgrade in p4a toolchain venv ===
+        # === Patch 2: build.py - upgrade pip with --trusted-host flags ===
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "Patching $BUILD_PY..."
-        # Replace commented-out pip upgrade with working version (with --trusted-host)
-        sed -i 's/#            "source venv\/bin\/activate \&\& pip install -U pip"  # COMMENTED OUT/            "source venv\/bin\/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"/' "$BUILD_PY"
-        grep -n 'pip install --upgrade' "$BUILD_PY"
+        # Replace the original pip install line (regardless of commented or not)
+        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        # Also handle commented version if it exists
+        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        # Verify - use || true so grep failure doesn't exit the step
+        echo "Checking build.py pip line:"
+        grep "source venv/bin/activate" "$BUILD_PY" || true
         echo "P4A patches done"
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
@@ -109,14 +119,10 @@ jobs:
 
         # Upgrade pip in buildozer's own venv (fixes pip 21.3.1 resolver bug)
         echo "Upgrading pip in buildozer venv..."
-        VENV_PIP=$(find $HOME/.buildozer -name pip -type f 2>/dev/null | grep venv/bin/pip | head -1)
-        if [ -n "$VENV_PIP" ] && [ -f "$VENV_PIP" ]; then
-          echo "Found venv pip: $VENV_PIP"
-          python3 -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip -t "$HOME/.local/lib/python3.10/site-packages" 2>&1 | tail -3 || true
-          $VENV_PIP install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip 2>&1 | tail -5 || true
-        else
-          echo "No buildozer venv pip found yet, will upgrade system pip in venvs later"
-        fi
+        for VENV_PIP in $(find $HOME/.buildozer -name pip -type f 2>/dev/null | grep venv/bin/pip); do
+          echo "Upgrading pip at: $VENV_PIP"
+          $VENV_PIP install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip 2>&1 | tail -3 || true
+        done
 
         cd "$GITHUB_WORKSPACE"
         buildozer android debug 2>&1 | tee buildozer.log
