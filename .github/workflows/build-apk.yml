@@ -118,8 +118,8 @@ PYEOF
         grep -n 'pip install -U pip' $BUILD_PY && echo "build.py PATCH FAILED" || echo "build.py PATCH OK"
 
         echo "P4A patch complete"
-      env:
-        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     - name: Install Python packages
       run: |
