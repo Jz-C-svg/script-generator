@@ -79,13 +79,14 @@ jobs:
           echo "Recipe patch may not have applied (check manually)"
         fi
 
-        # === Patch 2: build.py - upgrade pip with --trusted-host flags ===
+        # === Patch 2: build.py - upgrade pip using python -m pip (bypasses broken pip itself) ===
         BUILD_PY=$P4A_DIR/pythonforandroid/build.py
         echo "Patching $BUILD_PY..."
-        # Replace the original pip install line (regardless of commented or not)
-        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        # Replace pip install -U pip with python -m pip install --upgrade
+        # This uses Python's own pip module to upgrade pip (bypasses broken pip binary)
+        sed -i 's|"source venv/bin/activate && pip install -U pip"|"source venv/bin/activate \&\& python -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
         # Also handle commented version if it exists
-        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
+        sed -i 's|# "source venv/bin/activate && pip install -U pip"  # COMMENTED OUT|"source venv/bin/activate \&\& python -m pip install --upgrade --trusted-host=pypi.org --trusted-host=files.pythonhosted.org pip"|' "$BUILD_PY"
         # Verify - use || true so grep failure doesn't exit the step
         echo "Checking build.py pip line:"
         grep "source venv/bin/activate" "$BUILD_PY" || true
@@ -125,8 +126,9 @@ jobs:
         done
 
         cd "$GITHUB_WORKSPACE"
-        # Clean previous build artifacts to avoid cached Python 3.14
+        # Clean previous build artifacts for a fresh build
         rm -rf .buildozer || true
+        # Run buildozer (pip will be auto-upgraded in build.py's venv creation)
         buildozer android debug 2>&1 | tee buildozer.log
         EXIT_CODE=${PIPESTATUS[0]}
         echo "=== Build exit code: $EXIT_CODE ==="
